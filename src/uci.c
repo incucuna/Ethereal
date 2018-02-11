@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "board.h"
 #include "history.h"
@@ -43,6 +44,8 @@
 extern TransTable Table;
 
 int main(){
+    
+    srand(time(NULL));
     
     Board board;
     char str[8192];
@@ -69,7 +72,7 @@ int main(){
         getInput(str);
         
         if (stringEquals(str, "uci")){
-            printf("id name Ethereal 8.96\n");
+            printf("id name EtherealRandom (8.97)\n");
             printf("id author Andrew Grant\n");
             printf("option name Hash type spin default 16 min 1 max 65536\n");
             printf("option name Threads type spin default 1 min 1 max 2048\n");
