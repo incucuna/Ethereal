@@ -57,6 +57,8 @@ uint16_t getBestMove(Thread* threads, Board* board, Limits* limits, double time,
     // Generate all legal moves for the current position
     genAllLegalMoves(board, moves, &size);
     
+    return moves[rand() % size];
+    
     // Set each bit corresponding to whether or not a piece may move
     for (i = 0; i < size; i++)
         moveable |= (1ull << MoveFrom(moves[i]));
