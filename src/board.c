@@ -85,6 +85,83 @@ char Benchmarks[NUM_BENCHMARKS][256] = {
     "r2r1n2/pp2bk2/2p1p2p/3q4/3PN1QP/2P3R1/P4PP1/5RK1 w - - 0 1",
 };
 
+uint64_t piecesOfColour(const Board* board, int colour, int piece){
+    return board->colours[colour] & board->pieces[piece];
+}
+
+uint64_t computeZorbistHash(const Board* board){
+    
+    int i;
+    uint64_t hash = 0ull;
+    
+    // Factor in pieces and locations
+    for (i = 0; i < SQUARE_NB; i++)
+        hash ^= ZorbistKeys[board->squares[i]][i];
+    
+    // Factor in the castling rights
+    hash ^= ZorbistKeys[CASTLE][board->castleRights];
+    
+    // Factor in the enpass square
+    if (board->epSquare != -1)
+        hash ^= ZorbistKeys[ENPASS][File(board->epSquare)];
+    
+    // Factor in the turn
+    if (board->turn == BLACK)
+        hash ^= ZorbistKeys[TURN][0];
+    
+    return hash;
+}
+
+uint64_t computeMaterialHash(const Board* board){
+    
+    int colour, piece;
+    uint64_t mhash = 0ull;
+    
+    // Sum up each piece-colour by the Material keys
+    for (colour = WHITE; colour <= BLACK; colour++)
+        for (piece = PAWN; piece <= KING; piece++)
+            mhash += MaterialKeys[MakePiece(piece, colour)]
+                  *  popcount(piecesOfColour(board, colour, piece));
+                          
+    return mhash;
+}
+
+uint64_t computePawnKingHash(const Board* board){
+    
+    int i;
+    uint64_t pkhash = 0ull;
+    
+    // Loop the board and update for pawns
+    for (i = 0; i < SQUARE_NB; i++)
+        pkhash ^= PawnKingKeys[board->squares[i]][i];
+    
+    return pkhash;
+}
+
+int computePSQTMaterial(const Board* board){
+    
+    int i;
+    int psqtmat = 0;
+    
+    // Loop the board and sum up the material values
+    for(i = 0; i < 64; i++)
+        psqtmat += PSQT[board->squares[i]][i];
+    
+    return psqtmat;
+}
+
+
+int boardIsCorrect(const Board* board){
+    
+    // Verify incrementally updated members of the board
+    assert(board->hash    ==  computeZorbistHash(board));
+    assert(board->mhash   == computeMaterialHash(board));
+    assert(board->pkhash  == computePawnKingHash(board));
+    assert(board->psqtmat == computePSQTMaterial(board));
+    
+    return 1;
+}
+
 void initializeBoard(Board* board, char* fen){
     
     int i, j, sq;
@@ -195,33 +272,17 @@ void initializeBoard(Board* board, char* fen){
         if (enemyPawns == 0ull) board->epSquare = -1;
     }
     
-    // Inititalize Zorbist Hash
-    for(i = 0, board->hash = 0; i < 64; i++)
-        board->hash ^= ZorbistKeys[board->squares[i]][i];
-    
-    // Factor in the castling rights
-    board->hash ^= ZorbistKeys[CASTLE][board->castleRights];
-    
-    // Factor in the enpass square
-    if (board->epSquare != -1)
-        board->hash ^= ZorbistKeys[ENPASS][File(board->epSquare)];
-    
-    // Factor in the turn
-    if (board->turn == BLACK)
-        board->hash ^= ZorbistKeys[TURN][0];
-    
-    // Inititalize PawnKing Hash
-    for (i = 0, board->pkhash = 0; i < 64; i++)
-        board->pkhash ^= PawnKingKeys[board->squares[i]][i];
-        
-    // Initalize Piece Square and Material value counters
-    for(i = 0, board->psqtmat = 0; i < 64; i++)
-        board->psqtmat += PSQT[board->squares[i]][i];
+    board->hash = computeZorbistHash(board);
+    board->mhash = computeMaterialHash(board);
+    board->pkhash = computePawnKingHash(board);
+    board->psqtmat = computePSQTMaterial(board);
     
     // Number of moves since this (root) position
     board->numMoves = 0;
     
     board->kingAttackers = attackersToKingSquare(board);
+    
+    assert(boardIsCorrect(board));
 }
 
 void printBoard(Board* board){

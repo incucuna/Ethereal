@@ -16,10 +16,10 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <assert.h>
 
 #include "bitboards.h"
 #include "board.h"
@@ -42,6 +42,7 @@ void applyMove(Board* board, uint16_t move, Undo* undo){
     // Save information that is either hard to reverse,
     // or is not worth the time in order to do so
     undo->hash = board->hash;
+    undo->mhash = board->mhash;
     undo->pkhash = board->pkhash;
     undo->kingAttackers = board->kingAttackers;
     undo->turn = board->turn;
@@ -65,6 +66,9 @@ void applyMove(Board* board, uint16_t move, Undo* undo){
     
     // Get attackers to the new side to move's King
     board->kingAttackers = attackersToKingSquare(board);
+    
+    // Verify correctness of the board
+    assert(boardIsCorrect(board));
 }
 
 void applyNormalMove(Board* board, uint16_t move, Undo* undo){
@@ -121,6 +125,9 @@ void applyNormalMove(Board* board, uint16_t move, Undo* undo){
     board->hash   ^= ZorbistKeys[fromPiece][from]
                   ^  ZorbistKeys[fromPiece][to]
                   ^  ZorbistKeys[toPiece][to];
+                  
+    // Update the Material hash key
+    board->mhash  -= MaterialKeys[toPiece];
                 
     // Update the pawn zorbist hash
     board->pkhash ^= PawnKingKeys[fromPiece][from]
@@ -263,6 +270,9 @@ void applyEnpassMove(Board* board, uint16_t move, Undo* undo){
                   ^  ZorbistKeys[fromPiece][to]
                   ^  ZorbistKeys[enpassPiece][ep]
                   ^  ZorbistKeys[ENPASS][File(ep)];
+                  
+    // Update the Material hash key
+    board->mhash  -= MaterialKeys[enpassPiece];
                 
     // Update the PawnKing zorbist key
     board->pkhash ^= PawnKingKeys[fromPiece][from]
@@ -321,12 +331,17 @@ void applyPromotionMove(Board* board, uint16_t move, Undo* undo){
                     - PSQT[fromPiece][from] 
                     - PSQT[toPiece][to];
     
-    // Update the main zorbist hash
+    // Update the main zorbist hash key
     board->hash   ^= ZorbistKeys[fromPiece][from]
                   ^  ZorbistKeys[promoPiece][to]
                   ^  ZorbistKeys[toPiece][to];
+                  
+    // Update the Material hash key
+    board->mhash  += MaterialKeys[promoPiece]
+                  -  MaterialKeys[toPiece]
+                  -  MaterialKeys[fromPiece];
                 
-    // Update the PawnKing zorbist hash
+    // Update the PawnKing zorbist hash key
     board->pkhash ^= PawnKingKeys[fromPiece][from];
     
     // If there was a possible enpass move, we must
@@ -341,7 +356,6 @@ void applyNullMove(Board* board, Undo* undo){
     
     // Store turn, hash and epSquare
     undo->hash = board->hash;
-    undo->kingAttackers = board->kingAttackers;
     undo->turn = board->turn;
     undo->epSquare = board->epSquare;
     
@@ -357,6 +371,9 @@ void applyNullMove(Board* board, Undo* undo){
         board->hash ^= ZorbistKeys[ENPASS][File(board->epSquare)];
         board->epSquare = -1;
     }
+    
+    // Verify correctness of the board
+    assert(boardIsCorrect(board));
 }
 
 void revertMove(Board* board, uint16_t move, Undo* undo){
@@ -366,6 +383,7 @@ void revertMove(Board* board, uint16_t move, Undo* undo){
     
     board->numMoves--;
     board->hash = undo->hash;
+    board->mhash = undo->mhash;
     board->pkhash = undo->pkhash;
     board->kingAttackers = undo->kingAttackers;
     board->turn = undo->turn;
@@ -448,14 +466,20 @@ void revertMove(Board* board, uint16_t move, Undo* undo){
         board->squares[to] = EMPTY;
         board->squares[ep] = undo->capturePiece;
     }
+    
+    // Verify correctness of the board
+    assert(boardIsCorrect(board));
 }
 
 void revertNullMove(Board* board, Undo* undo){
     board->hash = undo->hash;
-    board->kingAttackers = undo->kingAttackers;
+    board->kingAttackers = 0ull;
     board->turn = !board->turn;
     board->epSquare = undo->epSquare;
     board->numMoves--;
+    
+    // Verify correctness of the board
+    assert(boardIsCorrect(board));
 }
 
 void printMove(uint16_t move){

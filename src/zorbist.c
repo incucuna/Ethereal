@@ -27,12 +27,28 @@
 #include "types.h"
 #include "zorbist.h"
 
+uint64_t MaterialKeys[32];
 uint64_t ZorbistKeys[32][SQUARE_NB];
 uint64_t PawnKingKeys[32][SQUARE_NB];
 
 void initializeZorbist(){
     
     int p, s;
+    
+    // Fill MaterialKeys. These are precomputed, and are
+    // taken directly from Ronald's CFish port of Stockfish
+    MaterialKeys[WHITE_PAWN  ] = 0x5ced000000000101ULL;
+    MaterialKeys[WHITE_KNIGHT] = 0xe173000000001001ULL;
+    MaterialKeys[WHITE_BISHOP] = 0xd64d000000010001ULL;
+    MaterialKeys[WHITE_ROOK  ] = 0xab88000000100001ULL;
+    MaterialKeys[WHITE_QUEEN ] = 0x680b000001000001ULL;
+    MaterialKeys[WHITE_KING  ] = 0x0000000000000001ULL;
+    MaterialKeys[BLACK_PAWN  ] = 0xf219000010000001ULL;
+    MaterialKeys[BLACK_KNIGHT] = 0xbb14000100000001ULL;
+    MaterialKeys[BLACK_BISHOP] = 0x58df001000000001ULL;
+    MaterialKeys[BLACK_ROOK  ] = 0xa15f010000000001ULL;
+    MaterialKeys[BLACK_QUEEN ] = 0x7c94100000000001ULL;
+    MaterialKeys[BLACK_KING  ] = 0x0000000000000001ULL;
     
     // Fill ZorbistKeys for each piece type and square
     for (p = 0; p <= 5; p++){

@@ -26,6 +26,7 @@ struct Board {
     uint64_t pieces[8]; 
     uint64_t colours[3];
     uint64_t hash;
+    uint64_t mhash;
     uint64_t pkhash;
     uint64_t kingAttackers;
     int turn;
@@ -39,6 +40,7 @@ struct Board {
 
 struct Undo {
     uint64_t hash;
+    uint64_t mhash;
     uint64_t pkhash;
     uint64_t kingAttackers;
     int turn;
@@ -49,6 +51,15 @@ struct Undo {
     int captureSquare;
     int capturePiece;
 };
+
+
+uint64_t piecesOfColour(const Board* board, int colour, int piece);
+uint64_t computeZorbistHash(const Board* board);
+uint64_t computeMaterialHash(const Board* board);
+uint64_t computePawnKingHash(const Board* board);
+int computePSQTMaterial(const Board* board);
+int boardIsCorrect(const Board* board);
+
 
 void initializeBoard(Board* board, char* fen);
 void printBoard(Board* board);
