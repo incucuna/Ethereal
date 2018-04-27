@@ -162,6 +162,17 @@ int boardIsCorrect(const Board* board){
     return 1;
 }
 
+int boardIsCheckMate(const Board* board){
+    
+    if (!board->kingAttackers) return 0;
+    
+    int size = 0;
+    uint16_t moves[MAX_MOVES];
+    genAllLegalMoves(board, moves, &size);
+    
+    return size == 0;
+}
+
 void initializeBoard(Board* board, char* fen){
     
     int i, j, sq;

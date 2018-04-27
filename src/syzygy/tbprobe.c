@@ -68,19 +68,19 @@ static uint64_t calc_key_from_pcs(int* pieces, int mirror){
     
     uint64_t key = 0ull;
     
-    key += MaterialKeys[WHITE_PAWN]   * (mirror ? pieces[9 + PAWN  ] ? pieces[1 + PAWN  ]);
-    key += MaterialKeys[WHITE_KNIGHT] * (mirror ? pieces[9 + KNIGHT] ? pieces[1 + KNIGHT]);
-    key += MaterialKeys[WHITE_BISHOP] * (mirror ? pieces[9 + BISHOP] ? pieces[1 + BISHOP]);
-    key += MaterialKeys[WHITE_ROOK]   * (mirror ? pieces[9 + ROOK  ] ? pieces[1 + ROOK  ]);
-    key += MaterialKeys[WHITE_QUEEN]  * (mirror ? pieces[9 + QUEEN ] ? pieces[1 + QUEEN ]);
-    key += MaterialKeys[WHITE_KING]   * (mirror ? pieces[9 + KING  ] ? pieces[1 + KING  ]);
+    key += MaterialKeys[WHITE_PAWN]   * (mirror ? pieces[9 + PAWN  ] : pieces[1 + PAWN  ]);
+    key += MaterialKeys[WHITE_KNIGHT] * (mirror ? pieces[9 + KNIGHT] : pieces[1 + KNIGHT]);
+    key += MaterialKeys[WHITE_BISHOP] * (mirror ? pieces[9 + BISHOP] : pieces[1 + BISHOP]);
+    key += MaterialKeys[WHITE_ROOK]   * (mirror ? pieces[9 + ROOK  ] : pieces[1 + ROOK  ]);
+    key += MaterialKeys[WHITE_QUEEN]  * (mirror ? pieces[9 + QUEEN ] : pieces[1 + QUEEN ]);
+    key += MaterialKeys[WHITE_KING]   * (mirror ? pieces[9 + KING  ] : pieces[1 + KING  ]);
     
-    key += MaterialKeys[BLACK_PAWN]   * (mirror ? pieces[1 + PAWN  ] ? pieces[9 + PAWN  ]);
-    key += MaterialKeys[BLACK_KNIGHT] * (mirror ? pieces[1 + KNIGHT] ? pieces[9 + KNIGHT]);
-    key += MaterialKeys[BLACK_BISHOP] * (mirror ? pieces[1 + BISHOP] ? pieces[9 + BISHOP]);
-    key += MaterialKeys[BLACK_ROOK]   * (mirror ? pieces[1 + ROOK  ] ? pieces[9 + ROOK  ]);
-    key += MaterialKeys[BLACK_QUEEN]  * (mirror ? pieces[1 + QUEEN ] ? pieces[9 + QUEEN ]);
-    key += MaterialKeys[BLACK_KING]   * (mirror ? pieces[1 + KING  ] ? pieces[9 + KING  ]);
+    key += MaterialKeys[BLACK_PAWN]   * (mirror ? pieces[1 + PAWN  ] : pieces[9 + PAWN  ]);
+    key += MaterialKeys[BLACK_KNIGHT] * (mirror ? pieces[1 + KNIGHT] : pieces[9 + KNIGHT]);
+    key += MaterialKeys[BLACK_BISHOP] * (mirror ? pieces[1 + BISHOP] : pieces[9 + BISHOP]);
+    key += MaterialKeys[BLACK_ROOK]   * (mirror ? pieces[1 + ROOK  ] : pieces[9 + ROOK  ]);
+    key += MaterialKeys[BLACK_QUEEN]  * (mirror ? pieces[1 + QUEEN ] : pieces[9 + QUEEN ]);
+    key += MaterialKeys[BLACK_KING]   * (mirror ? pieces[1 + KING  ] : pieces[9 + KING  ]);
     
     return key;
     
@@ -740,126 +740,96 @@ static int wdl_to_dtz[] = {
   -1, -101, 0, 101, 1
 };
 
-// Probe the DTZ table for a particular position.
-// If *success != 0, the probe was successful.
-// The return value is from the point of view of the side to move:
-//         n < -100 : loss, but draw under 50-move rule
-// -100 <= n < -1   : loss in n ply (assuming 50-move counter == 0)
-//         0        : draw
-//     1 < n <= 100 : win in n ply (assuming 50-move counter == 0)
-//   100 < n        : win, but draw under 50-move rule
-//
-// If the position mate, -1 is returned instead of 0.
-//
-// The return value n can be off by 1: a return value -n can mean a loss
-// in n+1 ply and a return value +n can mean a win in n+1 ply. This
-// cannot happen for tables with positions exactly on the "edge" of
-// the 50-move rule.
-//
-// This means that if dtz > 0 is returned, the position is certainly
-// a win if dtz + 50-move-counter <= 99. Care must be taken that the engine
-// picks moves that preserve dtz + 50-move-counter <= 99.
-//
-// If n = 100 immediately after a capture or pawn move, then the position
-// is also certainly a win, and during the whole phase until the next
-// capture or pawn move, the inequality to be preserved is
-// dtz + 50-movecounter <= 100.
-//
-// In short, if a move is available resulting in dtz + 50-move-counter <= 99,
-// then do not accept moves leading to dtz + 50-move-counter == 100.
-//
-int TB_probe_dtz(Pos *pos, int *success)
-{
-  int wdl = TB_probe_wdl(pos, success);
-  if (*success == 0) return 0;
-
-  // If draw, then dtz = 0.
-  if (wdl == 0) return 0;
-
-  // Check for winning capture or en passant capture as only best move.
-  if (*success == 2)
-    return wdl_to_dtz[wdl + 2];
-
-  ExtMove *end, *m = (pos->st-1)->endMoves;
-
-  // If winning, check for a winning pawn move.
-  if (wdl > 0) {
-    // Generate at least all legal non-capturing pawn moves
-    // including non-capturing promotions.
-    // (The following calls in fact generate all moves.)
-    if (!pos_checkers())
-      end = generate_non_evasions(pos, m);
-    else
-      end = generate_evasions(pos, m);
-    pos->st->endMoves = end;
-
-    for (; m < end; m++) {
-      Move move = m->move;
-      if (type_of_p(moved_piece(move)) != PAWN || is_capture(pos, move)
-                || !is_legal(pos, move))
-        continue;
-      do_move(pos, move, gives_check(pos, pos->st, move));
-      int v = -TB_probe_wdl(pos, success);
-      undo_move(pos, move);
-      if (*success == 0) return 0;
-      if (v == wdl)
-        return wdl_to_dtz[wdl + 2];
-    }
-  }
-
-  // If we are here, we know that the best move is not an ep capture.
-  // In other words, the value of wdl corresponds to the WDL value of
-  // the position without ep rights. It is therefore safe to probe the
-  // DTZ table with the current value of wdl.
-
-  int dtz = probe_dtz_table(pos, wdl, success);
-  if (*success >= 0)
-    return wdl_to_dtz[wdl + 2] + ((wdl > 0) ? dtz : -dtz);
-
-  // *success < 0 means we need to probe DTZ for the other side to move.
-  int best;
-  if (wdl > 0) {
-    best = INT32_MAX;
-    // If wdl > 0, we have already generated all moves.
-    m = (pos->st-1)->endMoves;
-  } else {
-    // If (cursed) loss, the worst case is a losing capture or pawn move
-    // as the "best" move, leading to dtz of -1 or -101.
-    // In case of mate, this will cause -1 to be returned.
-    best = wdl_to_dtz[wdl + 2];
-    // If wdl < 0, we still have to generate all moves.
-    if (!pos_checkers())
-      end = generate_non_evasions(pos, m);
-    else
-      end = generate_evasions(pos, m);
-    pos->st->endMoves = end;
-  }
-
-  for (; m < end; m++) {
-    Move move = m->move;
-    // We can skip pawn moves and captures.
-    // If wdl > 0, we already caught them. If wdl < 0, the initial value
-    // of best already takes account of them.
-    if (is_capture(pos, move) || type_of_p(moved_piece(move)) == PAWN
-              || !is_legal(pos, move))
-      continue;
-    do_move(pos, move, gives_check(pos, pos->st, move));
-    int v = -TB_probe_dtz(pos, success);
-    if (   v == 1
-        && pos_checkers()
-        && generate_legal(pos, (pos->st-1)->endMoves) == (pos->st-1)->endMoves)
-      best = 1;
-    else if (wdl > 0) {
-      if (v > 0 && v + 1 < best)
-        best = v + 1;
-    } else {
-      if (v - 1 < best)
-        best = v - 1;
-    }
-    undo_move(pos, move);
+int TB_probe_dtz(Board* board, int* success){
+    
+    int wdl = TB_probe_wdl(pos, success);
     if (*success == 0) return 0;
-  }
-  return best;
+
+    // If draw, then dtz = 0.
+    if (wdl == 0) return 0;
+
+    // Check for winning capture or en passant capture as only best move.
+    if (*success == 2) return wdl_to_dtz[wdl + 2];
+    
+    Undo undo[1];
+    int i, v, size = 0;
+    uint16_t move, moves[MAX_MOVES];
+    genAllLegalMoves(board, moves, &size);
+    
+    if (wdl > 0){
+        for (i = 0; i < size; i++){
+            
+            move = moves[i];
+            
+            if (   MoveType(move) == ENPASS_MOVE
+                || board->squares[MoveTo(move)] != EMPTY
+                || PieceType(board->squares[MoveFrom(move)]) != PAWN)
+                continue;
+                
+            applyMove(board, move, undo);
+            if (!isNotInCheck(board, !board->turn)){
+                revertMove(board, move, undo);
+                continue;
+            }
+            
+            v = -TB_probe_wdl(pos, success);
+            revertMove(board, move, undo);
+            
+            if (*success == 0) return 0;
+            if (v == wdl) return wdl_to_dtz[wdl + 2];
+
+        }
+    }
+
+    // If we are here, we know that the best move is not an ep capture.
+    // In other words, the value of wdl corresponds to the WDL value of
+    // the position without ep rights. It is therefore safe to probe the
+    // DTZ table with the current value of wdl.
+
+    int dtz = probe_dtz_table(pos, wdl, success);
+    if (*success >= 0)
+        return wdl_to_dtz[wdl + 2] + ((wdl > 0) ? dtz : -dtz);
+
+    // *success < 0 means we need to probe DTZ for the other side to move.
+    int best;
+    if (wdl > 0)  best = INT32_MAX;
+    else          best = wdl_to_dtz[wdl + 2];
+    
+    
+    for (i = 0; i < size; i++){
+        
+        move = moves[i];
+        
+        if (   board->squares[MoveTo(move)] != EMPTY
+            || PieceType(board->squares[MoveFrom(move)]) == PAWN)
+            continue;
+            
+        applyMove(board, move, undo);
+        if (!isNotInCheck(board, !board->turn)){
+            revertMove(board, move, undo);
+            continue;
+        }
+        
+        v = -TB_probe_dtz(pos, success);
+        
+        if (v == 1 && boardIsCheckMate(board))
+            best = 1;
+            
+        else if (wdl > 0) {
+            if (v > 0 && v + 1 < best)
+                best = v + 1;
+        } 
+        
+        else {
+            if (v - 1 < best)
+            best = v - 1;
+        }
+        
+        revertMove(board, move, undo);
+        if (*success == 0) return 0;        
+    }
+    
+    return best;
 }
 
 // Use the DTZ tables to rank and score all root moves in the list.

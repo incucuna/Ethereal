@@ -59,6 +59,7 @@ uint64_t computeMaterialHash(const Board* board);
 uint64_t computePawnKingHash(const Board* board);
 int computePSQTMaterial(const Board* board);
 int boardIsCorrect(const Board* board);
+int boardIsCheckMate(const Board* board);
 
 
 void initializeBoard(Board* board, char* fen);
