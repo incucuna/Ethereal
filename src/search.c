@@ -46,7 +46,7 @@
 
 extern unsigned TB_LARGEST;
 
-unsigned TB_PROBE_DEPTH;
+unsigned TB_PROBE_DEPTH = 3;
 
 extern TransTable Table;
 
@@ -437,8 +437,8 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
         
         int piececount = popcount(board->colours[WHITE] | board->colours[BLACK]);
         
-        if (    board->fiftyMoveRule == 0
-            &&  board->castleRights == 0
+        if (    board->castleRights == 0
+            &&  board->fiftyMoveRule == 0
             &&  piececount <= (int)TB_LARGEST
             && (piececount <  (int)TB_LARGEST || depth >= (int)TB_PROBE_DEPTH)){
                 
@@ -452,22 +452,22 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
                 bound = result == TB_LOSS ? ALLNODE
                       : result == TB_WIN  ? CUTNODE : PVNODE;
                       
-                //if (    bound == PVNODE
-                //    || (bound == CUTNODE && value >= beta)
-                //    || (bound == ALLNODE && value <= alpha)){
-                //                            
+                if (    bound == PVNODE
+                    || (bound == CUTNODE && value >= beta)
+                    || (bound == ALLNODE && value <= alpha)){
+                                            
                     storeTranspositionEntry(&Table, MAX_PLY - 1, bound, 
                                             valueToTT(best, height), NONE_MOVE, board->hash);
                             
                     return value;
-                // }
-                // 
-                // if (PvNode){
-                //     if (bound == ALLNODE)
-                //         best = value, alpha = MAX(alpha, best);
-                //     else
-                //         maxValue = value;
-                // }
+                }
+                
+                if (PvNode){
+                    if (bound == ALLNODE)
+                        best = value, alpha = MAX(alpha, best);
+                    else
+                        maxValue = value;
+                }
             }
         }
     }

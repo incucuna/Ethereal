@@ -75,7 +75,7 @@ int main(){
     // Build our Thread Pool, with default size of 1-thread
     Thread* threads = createThreadPool(nthreads);
     
-    tb_init("C:\\Users\\Andy\\Desktop\\Syzygy");
+    // tb_init("C:\\Users\\Andy\\Desktop\\Syzygy");
     
     #ifdef TUNE
         runTexelTuning(threads);
@@ -119,7 +119,6 @@ int main(){
             
             if (stringStartsWith(str, "setoption name SyzygyPath value ")){
                 tb_init(str + strlen("setoption name SyzygyPath value "));
-                printf("setting");
                 fflush(stdout);
             }
         }
