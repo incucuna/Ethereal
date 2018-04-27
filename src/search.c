@@ -43,9 +43,11 @@
 #include "movepicker.h"
 #include "uci.h"
 
-pthread_mutex_t LOCK = PTHREAD_MUTEX_INITIALIZER;
+unsigned TB_LARGEST;
 
 extern TransTable Table;
+
+pthread_mutex_t LOCK = PTHREAD_MUTEX_INITIALIZER;
 
 uint16_t getBestMove(Thread* threads, Board* board, Limits* limits, double start, double time, double mtg, double inc){
     

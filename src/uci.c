@@ -25,6 +25,7 @@
 
 #include "board.h"
 #include "evaluate.h"
+#include "fathom/tbprobe.h"
 #include "history.h"
 #include "magics.h"
 #include "masks.h"
@@ -41,9 +42,9 @@
 #include "uci.h"
 #include "zorbist.h"
 
-pthread_mutex_t READYLOCK = PTHREAD_MUTEX_INITIALIZER;
-
 extern TransTable Table;
+
+pthread_mutex_t READYLOCK = PTHREAD_MUTEX_INITIALIZER;
 
 int main(){
     
@@ -88,6 +89,7 @@ int main(){
             printf("id author Andrew Grant\n");
             printf("option name Hash type spin default 16 min 1 max 65536\n");
             printf("option name Threads type spin default 1 min 1 max 2048\n");
+            printf("option name SyzygyPath type string default <empty>\n");
             printf("uciok\n");
             fflush(stdout);
         }
@@ -111,6 +113,12 @@ int main(){
                 free(threads);
                 nthreads = atoi(str + strlen("setoption name Threads value"));
                 threads = createThreadPool(nthreads);
+            }
+            
+            if (stringStartsWith(str, "setoption name SyzygyPath value")){
+                tb_init(str + strlen("setoption name SyzygyPath value"));
+                printf("setting");
+                fflush(stdout);
             }
         }
         
