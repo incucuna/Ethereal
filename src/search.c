@@ -302,7 +302,7 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
     
     int i, repetitions, quiets = 0, played = 0, hist = 0;
     int R, newDepth, rAlpha, rBeta, ttValue, oldAlpha = alpha;
-    int eval, value = -MATE, best = -MATE, maxValue, futilityMargin = -MATE;
+    int eval, value = -MATE, best = -MATE, maxValue = MATE, futilityMargin = -MATE;
     int inCheck, isQuiet, improving, checkExtended, extension, bestWasQuiet = 0;
     
     uint16_t move, ttMove = NONE_MOVE, bestMove = NONE_MOVE, quietsTried[MAX_MOVES];

@@ -685,7 +685,7 @@ static int probe_dtm_loss(Board* board, int* success){
 
         v = -probe_dtm_win(board, success) + 1;
         revertMove(board, move, undo);
-        best = max(best, v);
+        best = MAX(best, v);
         if (*success == 0)
             return 0;
     }
@@ -701,7 +701,7 @@ static int probe_dtm_loss(Board* board, int* success){
     }
     
     v = -MATE + 2 * probe_dtm_table(board, 0, success);
-    return max(best, v);
+    return MAX(best, v);
 }
 
 static int probe_dtm_win(Board* board, int* success){
@@ -732,7 +732,7 @@ static int probe_dtm_win(Board* board, int* success){
             v = -MATE;
         
         revertMove(board, move, undo);
-        best = max(best, v);
+        best = MAX(best, v);
         if (*success == 0) return 0;
     }
     
