@@ -452,22 +452,22 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
                 bound = result == TB_LOSS ? ALLNODE
                       : result == TB_WIN  ? CUTNODE : PVNODE;
                       
-                if (    bound == PVNODE
-                    || (bound == CUTNODE && value >= beta)
-                    || (bound == ALLNODE && value <= alpha)){
-                                            
+                //if (    bound == PVNODE
+                //    || (bound == CUTNODE && value >= beta)
+                //    || (bound == ALLNODE && value <= alpha)){
+                //                            
                     storeTranspositionEntry(&Table, MAX_PLY - 1, bound, 
                                             valueToTT(best, height), NONE_MOVE, board->hash);
                             
                     return value;
-                }
-                
-                if (PvNode){
-                    if (bound == ALLNODE)
-                        best = value, alpha = MAX(alpha, best);
-                    else
-                        maxValue = value;
-                }
+                // }
+                // 
+                // if (PvNode){
+                //     if (bound == ALLNODE)
+                //         best = value, alpha = MAX(alpha, best);
+                //     else
+                //         maxValue = value;
+                // }
             }
         }
     }
@@ -771,7 +771,7 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
             updateHistory(thread->history, quietsTried[i], board->turn, -depth*depth);
     }
     
-    if (PvNode) best = MIN(best, maxValue);
+    // if (PvNode) best = MIN(best, maxValue);
     
     // Step 22. Store the results of the search in the transposition table.
     // We must determine a bound for the result based on alpha and beta, and
@@ -897,7 +897,7 @@ unsigned tablebasesProbeWDL(Board* board){
         board->pieces[PAWN  ],
         board->fiftyMoveRule,
         board->castleRights,
-        board->epSquare == -1 ? 0 : board->epSquare - 8 + (board->turn << 4),
+        board->epSquare == -1 ? 0 : board->epSquare,
         board->turn == WHITE ? 1 : 0
     );
 }
@@ -915,7 +915,7 @@ unsigned tablebasesProbeDTZ(Board* board, uint16_t* move, unsigned* wdl, unsigne
         board->pieces[PAWN  ],
         board->fiftyMoveRule,
         board->castleRights,
-        board->epSquare == -1 ? 0 : board->epSquare - 8 + (board->turn << 4),
+        board->epSquare == -1 ? 0 : board->epSquare,
         board->turn == WHITE ? 1 : 0,
         NULL
     );
