@@ -44,8 +44,6 @@
 #include "movepicker.h"
 #include "uci.h"
 
-//unsigned TB_LARGEST;
-
 extern unsigned TB_LARGEST;
 
 unsigned TB_PROBE_DEPTH;
@@ -61,7 +59,6 @@ uint16_t getBestMove(Thread* threads, Board* board, Limits* limits, double start
     if (   popcount(board->colours[WHITE] | board->colours[BLACK]) <= TB_LARGEST
         && tablebasesProbeDTZ(board, &move, &wdl, &dtz))
         return move;
-    
     
     int i, nthreads = threads[0].nthreads;
     
