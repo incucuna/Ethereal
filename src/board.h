@@ -53,13 +53,13 @@ struct Undo {
 };
 
 
-uint64_t piecesOfColour(const Board* board, int colour, int piece);
-uint64_t computeZorbistHash(const Board* board);
-uint64_t computeMaterialHash(const Board* board);
-uint64_t computePawnKingHash(const Board* board);
-int computePSQTMaterial(const Board* board);
-int boardIsCorrect(const Board* board);
-int boardIsCheckMate(const Board* board);
+uint64_t piecesOfColour(Board* board, int colour, int piece);
+uint64_t computeZorbistHash(Board* board);
+uint64_t computeMaterialHash(Board* board);
+uint64_t computePawnKingHash(Board* board);
+int computePSQTMaterial(Board* board);
+int boardIsCorrect(Board* board);
+int boardIsCheckMate(Board* board);
 
 
 void initializeBoard(Board* board, char* fen);

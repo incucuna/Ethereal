@@ -12,6 +12,13 @@
 
 #include "tbcore.c"
 
+#include "../piece.h"
+#include "../board.h"
+#include "../move.h"
+#include "../movegen.h"
+#include "../zorbist.h"
+#include "../types.h"
+
 extern uint64_t MaterialKeys[32];
 
 int TB_MaxCardinality = 0, TB_MaxCardinalityDTM = 0;
@@ -40,11 +47,11 @@ static uint64_t calc_key(const Board* board, int mirror){
     
     for (piece = PAWN; piece <= KING; piece++)
         key += MaterialKeys[MakePiece(piece, mirror)]
-            *  popcount(piecesOfColour(board, WHITE, piece));
+            *  popcount(boardPiecesOfColour(board, WHITE, piece));
             
     for (piece = PAWN; piece <= KING; piece++)
         key += MaterialKeys[MakePiece(piece, !mirror)]
-            *  popcount(piecesOfColour(board, BLACK, piece));
+            *  popcount(boardPiecesOfColour(board, BLACK, piece));
             
     // Verify that the above is equivilant to the computeMaterialKey
     // function which is verified during move application. If we are not
@@ -88,12 +95,12 @@ static uint64_t calc_key_from_pcs(int* pieces, int mirror){
 
 static uint64_t calc_key_from_pieces(uint8_t* pieces, int num, int mirror){
     
-    uint64_t key = 0; int i, colour, piece
+    uint64_t key = 0; int i, colour, piece;
     
     for (i = 0; i < num; i++){
         
         // Ronald has this condition
-        if (!piece[i]) continue;
+        if (!pieces[i]) continue;
         
         // Convert from Ronald's piece values to Ethereal's
         
@@ -101,7 +108,7 @@ static uint64_t calc_key_from_pieces(uint8_t* pieces, int num, int mirror){
                : (pieces[num] >= 9 && pieces[num] <= 14) ? pieces[num] - 9 : -1;
                   
         colour = (pieces[num] >= 1 && pieces[num] <=  6) ? WHITE
-                 (pieces[num] >= 9 && pieces[num] <= 14) ? BLACK : -1;
+               : (pieces[num] >= 9 && pieces[num] <= 14) ? BLACK : -1;
                  
         // Conversion could not be done
         assert(piece != -1 && colour != -1);
@@ -146,7 +153,7 @@ static int probe_wdl_table(Board* board, int* success){
         if (!atomic_load_explicit(&ptr->ready, memory_order_relaxed)) {
             
             char str[16];
-            prt_str(pos, str, ptr->key != key);
+            prt_str(board, str, ptr->key != key);
             
             if (!init_table(ptr, str, 0)) {
                 ptr2[i].key = 0ULL;
@@ -200,7 +207,7 @@ static int probe_wdl_table(Board* board, int* success){
         int k = entry->file[0].pieces[0][0] ^ cmirror;
         
         uint64_t bb = pieces_cp(k >> 3, k & 0x07);
-        i = 0; do { p[i++] = pop_lsb(&bb) ^ mirror; } while (bb);
+        i = 0; do { p[i++] = poplsb(&bb) ^ mirror; } while (bb);
         
         int f = pawn_file(entry, p);
         uint8_t *pc = entry->file[f].pieces[bside];
@@ -252,7 +259,7 @@ static int probe_dtm_table(Board* board, int won, int* success){
         if (!atomic_load_explicit(&ptr->ready, memory_order_relaxed)) {
             
             char str[16];
-            prt_str(pos, str, ptr->key != key);
+            prt_str(board, str, ptr->key != key);
             
             if (!init_table(ptr, str, 1)) {
                 ptr->data = NULL;
@@ -311,14 +318,14 @@ static int probe_dtm_table(Board* board, int won, int* success){
         int k = entry->rank[0].pieces[0][0] ^ cmirror;
         
         uint64_t bb = pieces_cp(k >> 3, k & 0x07);
-        i = 0; do { p[i++] = pop_lsb(&bb) ^ mirror; } while (bb);
+        i = 0; do { p[i++] = poplsb(&bb) ^ mirror; } while (bb);
         
         int r = pawn_rank((struct TBEntry_pawn2 *)entry, p);
         uint8_t *pc = entry->rank[r].pieces[bside];
         
         for (; i < entry->num;) {
             bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
-            do { assume(i < TBPIECES); p[i++] = pop_lsb(&bb) ^ mirror; } while (bb);
+            do { assume(i < TBPIECES); p[i++] = poplsb(&bb) ^ mirror; } while (bb);
         }
         
         idx = encode_pawn2((struct TBEntry_pawn2 *)entry, entry->rank[r].norm[bside], p, entry->rank[r].factor[bside]);
@@ -435,8 +442,8 @@ static int probe_dtz_table(Board* board, int wdl, int* success){
       struct DTZEntry_pawn *entry = (struct DTZEntry_pawn *)ptr;
       int k = entry->file[0].pieces[0] ^ cmirror;
       
-      Bitboard bb = pieces_cp(k >> 3, k & 0x07);
-      i = 0; do { p[i++] = pop_lsb(&bb) ^ mirror; } while (bb);
+      uint64_t bb = pieces_cp(k >> 3, k & 0x07);
+      i = 0; do { p[i++] = poplsb(&bb) ^ mirror; } while (bb);
       
       int f = pawn_file((struct TBEntry_pawn *)entry, p);
       if ((entry->flags[f] & 1) != bside) {
@@ -447,7 +454,7 @@ static int probe_dtz_table(Board* board, int wdl, int* success){
       uint8_t *pc = entry->file[f].pieces;
       for (; i < entry->num;) {
           bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
-          do { assume(i < TBPIECES); p[i++] = pop_lsb(&bb) ^ mirror; } while (bb); 
+          do { assume(i < TBPIECES); p[i++] = poplsb(&bb) ^ mirror; } while (bb); 
       }
       
       idx = encode_pawn((struct TBEntry_pawn *)entry, entry->file[f].norm, p, entry->file[f].factor);
@@ -493,7 +500,7 @@ static int probe_ab(Board* board, int alpha, int beta, int* success){
             continue;
         }
         
-        v = -probe_ab(pos, -beta, -alpha, success);
+        v = -probe_ab(board, -beta, -alpha, success);
         revertMove(board, move, undo);
         if (*success == 0) return 0;
         
@@ -504,7 +511,7 @@ static int probe_ab(Board* board, int alpha, int beta, int* success){
         }
     }
     
-    v = probe_wdl_table(pos, success);
+    v = probe_wdl_table(board, success);
 
     return alpha >= v ? alpha : v;    
 }
@@ -540,7 +547,7 @@ int TB_probe_wdl(Board* board, int* success){
             continue;
         }
         
-        v = -probe_ab(pos, -2, -best_cap, success);
+        v = -probe_ab(board, -2, -best_cap, success);
         revertMove(board, move, undo);
         if (*success == 0) return 0;
         
@@ -551,7 +558,7 @@ int TB_probe_wdl(Board* board, int* success){
                 return 2;
             }
             
-            if (type_of_m(move) != ENPASSANT)
+            if (MoveType(move) == ENPASS_MOVE)
                 best_cap = v;
             
             else if (v > best_ep)
@@ -560,7 +567,7 @@ int TB_probe_wdl(Board* board, int* success){
         
     }
 
-    v = probe_wdl_table(pos, success);
+    v = probe_wdl_table(board, success);
     if (*success == 0) return 0;
 
     // Now max(v, best_cap) is the WDL value of the position without ep rights.
@@ -597,7 +604,7 @@ int TB_probe_wdl(Board* board, int* success){
         
         for (i = 0; i < size; i++){
             
-            move = Moves[i];
+            move = moves[i];
             
             if (MoveType(move) == ENPASS_MOVE) continue;
             
@@ -615,9 +622,11 @@ int TB_probe_wdl(Board* board, int* success){
         if (i == size && !board->kingAttackers){
             
             size = 0;
-            generateAllQuietMoves(board, moves, &size);
+            genAllQuietMoves(board, moves, &size);
             
             for (i = 0; i < size; i++){
+                
+                move = moves[i];
                 
                 applyMove(board, move, undo);
                 if (!isNotInCheck(board, !board->turn)){
@@ -648,13 +657,13 @@ static int probe_dtm_loss(Board* board, int* success){
     int v, best = -MATE, num_ep = 0;
 
     Undo undo[1];
-    int size = 0;
+    int i, size = 0;
     uint16_t move, moves[MAX_MOVES];
     genAllNoisyMoves(board, moves, &size);
 
     for (i = 0; i < size; i++){
 
-        move = Moves[i];
+        move = moves[i];
 
         // Skip over non-captures (non-capture promotions)
         if (board->squares[MoveTo(move)] == EMPTY)
@@ -670,7 +679,7 @@ static int probe_dtm_loss(Board* board, int* success){
         if (MoveType(move) == ENPASS_MOVE)
             num_ep++;
 
-        v = -probe_dtm_win(pos, success) + 1;
+        v = -probe_dtm_win(board, success) + 1;
         revertMove(board, move, undo);
         best = max(best, v);
         if (*success == 0)
@@ -680,14 +689,14 @@ static int probe_dtm_loss(Board* board, int* success){
     if (num_ep != 0){
         
         size = 0;
-        generateAllLegalMoves(board, moves, &size);
+        genAllLegalMoves(board, moves, &size);
         
         if (size == num_ep)
             return best;
         
     }
     
-    v = -MATE + 2 * probe_dtm_table(pos, 0, success);
+    v = -MATE + 2 * probe_dtm_table(board, 0, success);
     return max(best, v);
 }
 
@@ -696,13 +705,13 @@ static int probe_dtm_win(Board* board, int* success){
     int v, best = -MATE;
     
     Undo undo[1];
-    int size = 0;
+    int i, size = 0;
     uint16_t move, moves[MAX_MOVES];
     genAllMoves(board, moves, &size);
     
     for (i = 0; i < size; i++){
         
-        move = Moves[i];
+        move = moves[i];
         
         // Apply the move, and verify legality
         applyMove(board, move, undo);
@@ -711,12 +720,12 @@ static int probe_dtm_win(Board* board, int* success){
             continue;
         }
         
-        if (   (board->epSquare != -1 ? TB_probe_wdl(pos, success)
-                                      : probe_ab(pos, -1, 0, success)) < 0
+        if (   (board->epSquare != -1 ? TB_probe_wdl(board, success)
+                                      : probe_ab(board, -1, 0, success)) < 0
             && *success)
-            v = -probe_dtm_loss(pos, success) - 1;
+            v = -probe_dtm_loss(board, success) - 1;
         else
-            v = -VALUE_INFINITE;
+            v = -MATE;
         
         revertMove(board, move, undo);
         best = max(best, v);
@@ -732,8 +741,8 @@ int TB_probe_dtm(Board* board, int wdl, int *success){
 
   *success = 1;
 
-  return wdl > 0 ? probe_dtm_win(pos, success)
-                 : probe_dtm_loss(pos, success);
+  return wdl > 0 ? probe_dtm_win(board, success)
+                 : probe_dtm_loss(board, success);
 }
 
 static int wdl_to_dtz[] = {
@@ -742,7 +751,7 @@ static int wdl_to_dtz[] = {
 
 int TB_probe_dtz(Board* board, int* success){
     
-    int wdl = TB_probe_wdl(pos, success);
+    int wdl = TB_probe_wdl(board, success);
     if (*success == 0) return 0;
 
     // If draw, then dtz = 0.
@@ -772,7 +781,7 @@ int TB_probe_dtz(Board* board, int* success){
                 continue;
             }
             
-            v = -TB_probe_wdl(pos, success);
+            v = -TB_probe_wdl(board, success);
             revertMove(board, move, undo);
             
             if (*success == 0) return 0;
@@ -786,7 +795,7 @@ int TB_probe_dtz(Board* board, int* success){
     // the position without ep rights. It is therefore safe to probe the
     // DTZ table with the current value of wdl.
 
-    int dtz = probe_dtz_table(pos, wdl, success);
+    int dtz = probe_dtz_table(board, wdl, success);
     if (*success >= 0)
         return wdl_to_dtz[wdl + 2] + ((wdl > 0) ? dtz : -dtz);
 
@@ -810,7 +819,7 @@ int TB_probe_dtz(Board* board, int* success){
             continue;
         }
         
-        v = -TB_probe_dtz(pos, success);
+        v = -TB_probe_dtz(board, success);
         
         if (v == 1 && boardIsCheckMate(board))
             best = 1;
@@ -832,6 +841,7 @@ int TB_probe_dtz(Board* board, int* success){
     return best;
 }
 
+/*
 // Use the DTZ tables to rank and score all root moves in the list.
 // A return value of 0 means that not all probes were successful.
 int TB_root_probe_dtz(Pos *pos, RootMoves *rm)
@@ -931,4 +941,4 @@ int TB_root_probe_wdl(Pos *pos, RootMoves *rm)
   }
 
   return 1;
-}
+}*/

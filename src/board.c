@@ -85,11 +85,11 @@ char Benchmarks[NUM_BENCHMARKS][256] = {
     "r2r1n2/pp2bk2/2p1p2p/3q4/3PN1QP/2P3R1/P4PP1/5RK1 w - - 0 1",
 };
 
-uint64_t piecesOfColour(const Board* board, int colour, int piece){
+uint64_t piecesOfColour(Board* board, int colour, int piece){
     return board->colours[colour] & board->pieces[piece];
 }
 
-uint64_t computeZorbistHash(const Board* board){
+uint64_t computeZorbistHash(Board* board){
     
     int i;
     uint64_t hash = 0ull;
@@ -112,7 +112,7 @@ uint64_t computeZorbistHash(const Board* board){
     return hash;
 }
 
-uint64_t computeMaterialHash(const Board* board){
+uint64_t computeMaterialHash(Board* board){
     
     int colour, piece;
     uint64_t mhash = 0ull;
@@ -126,7 +126,7 @@ uint64_t computeMaterialHash(const Board* board){
     return mhash;
 }
 
-uint64_t computePawnKingHash(const Board* board){
+uint64_t computePawnKingHash(Board* board){
     
     int i;
     uint64_t pkhash = 0ull;
@@ -138,7 +138,7 @@ uint64_t computePawnKingHash(const Board* board){
     return pkhash;
 }
 
-int computePSQTMaterial(const Board* board){
+int computePSQTMaterial(Board* board){
     
     int i;
     int psqtmat = 0;
@@ -151,7 +151,7 @@ int computePSQTMaterial(const Board* board){
 }
 
 
-int boardIsCorrect(const Board* board){
+int boardIsCorrect(Board* board){
     
     // Verify incrementally updated members of the board
     assert(board->hash    ==  computeZorbistHash(board));
@@ -162,7 +162,7 @@ int boardIsCorrect(const Board* board){
     return 1;
 }
 
-int boardIsCheckMate(const Board* board){
+int boardIsCheckMate(Board* board){
     
     if (!board->kingAttackers) return 0;
     

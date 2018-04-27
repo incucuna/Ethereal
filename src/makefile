@@ -26,7 +26,7 @@ LIBS = -lpthread -lm
 EXE = Ethereal
 
 
-WFLAGS = -std=c11
+WFLAGS = -Wall -Wshadow -Wextra -std=c11
 
 CFLAGS = -DNDEBUG -O3 $(WFLAGS) -march=native -flto
 

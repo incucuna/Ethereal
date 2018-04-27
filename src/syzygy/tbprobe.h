@@ -13,8 +13,8 @@ void TB_free(void);
 int TB_probe_wdl(Board* board, int* success);
 int TB_probe_dtz(Board* board, int* success);
 int TB_probe_dtm(Board* board, int wdl, int* success);
-int TB_root_probe_wdl(Board* board, RootMoves *rm);
-int TB_root_probe_dtz(Board* board, RootMoves *rm);
+// int TB_root_probe_wdl(Board* board, RootMoves *rm);
+// int TB_root_probe_dtz(Board* board, RootMoves *rm);
 
 // Definitions to try to avoid rewriting large chunks of the probing
 // code. These definitions match or mirror those written in CFish
