@@ -7,35 +7,15 @@
   this code to other chess engines.
 */
 
-
-
 #include "tbprobe.h"
 #include "tbcore.h"
 
 #include "tbcore.c"
 
-extern Key mat_key[16];
+extern uint64_t MaterialKeys[32];
 
 int TB_MaxCardinality = 0, TB_MaxCardinalityDTM = 0;
 extern int TB_CardinalityDTM;
-
-// Given a position with 6 or fewer pieces, produce a text string
-// of the form KQPvKRP, where "KQP" represents the white pieces if
-// mirror == 0 and the black pieces if mirror == 1.
-// static void prt_str(Pos *pos, char *str, int mirror)
-// {
-//   int color = !mirror ? WHITE : BLACK;
-// 
-//   for (int pt = KING; pt >= PAWN; pt--)
-//     for (int i = popcount(pieces_cp(color, pt)); i > 0; i--)
-//       *str++ = pchr[6 - pt];
-//   *str++ = 'v';
-//   color ^= 1;
-//   for (int pt = KING; pt >= PAWN; pt--)
-//     for (int i = popcount(pieces_cp(color, pt)); i > 0; i--)
-//       *str++ = pchr[6 - pt];
-//   *str++ = 0;
-// }
 
 static void prt_str(Board* board, char* str, int mirror){
     
@@ -53,24 +33,6 @@ static void prt_str(Board* board, char* str, int mirror){
         
     *str++ = 0;
 }
-
-/*----------------------------------------------------------------------------------------------------*/
-
-// Given a position, produce a 64-bit material signature key.
-// If the engine supports such a key, it should equal the engine's key.
-// static Key calc_key(Pos *pos, int mirror)
-// {
-//   Key key = 0;
-// 
-//   int color = !mirror ? WHITE : BLACK;
-//   for (int pt = PAWN; pt <= KING; pt++)
-//     key += mat_key[pt] * popcount(pieces_cp(color, pt));
-//   color ^= 1;
-//   for (int pt = PAWN; pt <= KING; pt++)
-//     key += mat_key[pt + 8] * popcount(pieces_cp(color, pt));
-// 
-//   return key;
-// }
 
 static uint64_t calc_key(const Board* board, int mirror){
     
@@ -102,23 +64,6 @@ static uint64_t calc_key(const Board* board, int mirror){
     return key;
 }
 
-/*----------------------------------------------------------------------------------------------------*/
-
-// Produce a 64-bit material key corresponding to the material combination
-// defined by pcs[16], where pcs[1], ..., pcs[6] is the number of white
-// pawns, ..., kings and pcs[9], ..., pcs[14] is the number of black
-// pawns, ..., kings.
-// static Key calc_key_from_pcs(int *pcs, int mirror)
-// {
-//   Key key = 0;
-// 
-//   int color = !mirror ? 0 : 8;
-//   for (int i = W_PAWN; i <= B_KING; i++)
-//     key += mat_key[i] * pcs[i ^ color];
-// 
-//   return key;
-// }
-
 static uint64_t calc_key_from_pcs(int* pieces, int mirror){
     
     uint64_t key = 0ull;
@@ -141,23 +86,6 @@ static uint64_t calc_key_from_pcs(int* pieces, int mirror){
     
 }
 
-/*----------------------------------------------------------------------------------------------------*/
-
-// Produce a 64-bit material key corresponding to the material combination
-// piece[0], ..., piece[num - 1], where each value corresponds to a piece
-// (1-6 for white pawn-king, 9-14 for black pawn-king).
-// static Key calc_key_from_pieces(uint8_t *piece, int num, int mirror)
-// {
-//   Key key = 0;
-// 
-//   int color = !mirror ? 0 : 8;
-//   for (int i = 0; i < num; i++)
-//     if (piece[i])
-//       key += mat_key[piece[i] ^ color];
-// 
-//   return key;
-// }
-
 static uint64_t calc_key_from_pieces(uint8_t* pieces, int num, int mirror){
     
     uint64_t key = 0; int i, colour, piece
@@ -179,220 +107,228 @@ static uint64_t calc_key_from_pieces(uint8_t* pieces, int num, int mirror){
         assert(piece != -1 && colour != -1);
         
         // Use the opposite colours Material key if we are mirroring
-        key += !mirror ? MaterialKeys[MakePiece(piece,  colour)
-                       : MaterialKeys[MakePiece(piece, !colour);
+        key += !mirror ? MaterialKeys[MakePiece(piece, colour)] : MaterialKeys[MakePiece(piece, !colour)];
+        
     }
     
     return key;
 }
 
-/*----------------------------------------------------------------------------------------------------*/
+static int probe_wdl_table(Board* board, int* success){
+    
+    int i, p[TBPIECES];
+    uint8_t res;
+    
+    size_t idx;
+    struct TBEntry* ptr;
+    struct TBHashEntry* ptr2;
+    
+    uint64_t key = board->mhash;
 
-// probe_wdl_table and probe_dtz_table require similar adaptations.
-static int probe_wdl_table(Pos *pos, int *success)
-{
-  struct TBEntry *ptr;
-  struct TBHashEntry *ptr2;
-  size_t idx;
-  int i;
-  uint8_t res;
-  int p[TBPIECES];
+    // Test for KvK
+    if (key == 2ull) return 0;
 
-  // Obtain the position's material signature key.
-  Key key = pos_material_key();
-
-  // Test for KvK.
-  if (key == 2ULL)
-    return 0;
-
-  ptr2 = TB_hash[key >> (64 - TBHASHBITS)];
-  for (i = 0; i < HSHMAX; i++)
-    if (ptr2[i].key == key) break;
-  if (i == HSHMAX) {
-    *success = 0;
-    return 0;
-  }
-
-  ptr = ptr2[i].ptr;
-  // With the help of C11 atomics, we implement double-checked locking
-  // correctly.
-  if (!atomic_load_explicit(&ptr->ready, memory_order_acquire)) {
-    LOCK(TB_mutex);
-    if (!atomic_load_explicit(&ptr->ready, memory_order_relaxed)) {
-      char str[16];
-      prt_str(pos, str, ptr->key != key);
-      if (!init_table(ptr, str, 0)) {
-        ptr2[i].key = 0ULL;
+    ptr2 = TB_hash[key >> (64 - TBHASHBITS)];
+    for (i = 0; i < HSHMAX; i++)
+        if (ptr2[i].key == key) break;
+    if (i == HSHMAX) {
         *success = 0;
-        UNLOCK(TB_mutex);
         return 0;
-      }
-      atomic_store_explicit(&ptr->ready, 1, memory_order_release);
     }
-    UNLOCK(TB_mutex);
-  }
 
-  int bside, mirror, cmirror;
-  if (!ptr->symmetric) {
-    if (key != ptr->key) {
-      cmirror = 8;
-      mirror = 0x38;
-      bside = (pos_stm() == WHITE);
+    ptr = ptr2[i].ptr;
+    
+    // With the help of C11 atomics, we implement double-checked locking correctly
+    if (!atomic_load_explicit(&ptr->ready, memory_order_acquire)) {
+        
+        LOCK(TB_mutex);
+        
+        if (!atomic_load_explicit(&ptr->ready, memory_order_relaxed)) {
+            
+            char str[16];
+            prt_str(pos, str, ptr->key != key);
+            
+            if (!init_table(ptr, str, 0)) {
+                ptr2[i].key = 0ULL;
+                *success = 0;
+                UNLOCK(TB_mutex);
+                return 0;
+            }
+            
+            atomic_store_explicit(&ptr->ready, 1, memory_order_release);
+        }
+        
+        UNLOCK(TB_mutex);
+    }
+
+    int bside, mirror, cmirror;
+    if (!ptr->symmetric) {
+        if (key != ptr->key) {
+            cmirror = 8;
+            mirror = 0x38;
+            bside = (board->turn == WHITE);
+        } else {
+            cmirror = mirror = 0;
+            bside = !(board->turn == WHITE);
+        }
     } else {
-      cmirror = mirror = 0;
-      bside = !(pos_stm() == WHITE);
+        cmirror = board->turn == WHITE ? 0 : 8;
+        mirror = board->turn == WHITE ? 0 : 0x38;
+        bside = 0;
     }
-  } else {
-    cmirror = pos_stm() == WHITE ? 0 : 8;
-    mirror = pos_stm() == WHITE ? 0 : 0x38;
-    bside = 0;
-  }
 
-  // p[i] is to contain the square 0-63 (A1-H8) for a piece of type
-  // pc[i] ^ cmirror, where 1 = white pawn, ..., 14 = black king.
-  // Pieces of the same type are guaranteed to be consecutive.
-  if (!ptr->has_pawns) {
-    struct TBEntry_piece *entry = (struct TBEntry_piece *)ptr;
-    uint8_t *pc = entry->pieces[bside];
-    for (i = 0; i < entry->num;) {
-      Bitboard bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
-      do {
-        p[i++] = pop_lsb(&bb);
-      } while (bb);
+    // p[i] is to contain the square 0-63 (A1-H8) for a piece of type
+    // pc[i] ^ cmirror, where 1 = white pawn, ..., 14 = black king.
+    // Pieces of the same type are guaranteed to be consecutive.
+    if (!ptr->has_pawns) {
+        
+        struct TBEntry_piece *entry = (struct TBEntry_piece *)ptr;
+        uint8_t *pc = entry->pieces[bside];
+        
+        for (i = 0; i < entry->num;) {
+            uint64_t bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
+            do { p[i++] = poplsb(&bb); } while (bb);
+        }
+        
+        idx = encode_piece(entry, entry->norm[bside], p, entry->factor[bside]);
+        res = *decompress_pairs(entry->precomp[bside], idx);
+    } 
+    
+    else {
+        
+        struct TBEntry_pawn *entry = (struct TBEntry_pawn *)ptr;
+        int k = entry->file[0].pieces[0][0] ^ cmirror;
+        
+        uint64_t bb = pieces_cp(k >> 3, k & 0x07);
+        i = 0; do { p[i++] = pop_lsb(&bb) ^ mirror; } while (bb);
+        
+        int f = pawn_file(entry, p);
+        uint8_t *pc = entry->file[f].pieces[bside];
+        
+        for (; i < entry->num;) {
+            bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
+            do { assume(i < TBPIECES); p[i++] = poplsb(&bb) ^ mirror; } while (bb);
+        }
+        
+        idx = encode_pawn(entry, entry->file[f].norm[bside], p, entry->file[f].factor[bside]);
+        res = *decompress_pairs(entry->file[f].precomp[bside], idx);
     }
-    idx = encode_piece(entry, entry->norm[bside], p, entry->factor[bside]);
-    res = *decompress_pairs(entry->precomp[bside], idx);
-  } else {
-    struct TBEntry_pawn *entry = (struct TBEntry_pawn *)ptr;
-    int k = entry->file[0].pieces[0][0] ^ cmirror;
-    Bitboard bb = pieces_cp(k >> 3, k & 0x07);
-    i = 0;
-    do {
-      p[i++] = pop_lsb(&bb) ^ mirror;
-    } while (bb);
-    int f = pawn_file(entry, p);
-    uint8_t *pc = entry->file[f].pieces[bside];
-    for (; i < entry->num;) {
-      bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
-      do {
-        assume(i < TBPIECES); // Suppress a bogus warning.
-        p[i++] = pop_lsb(&bb) ^ mirror;
-      } while (bb);
-    }
-    idx = encode_pawn(entry, entry->file[f].norm[bside], p, entry->file[f].factor[bside]);
-    res = *decompress_pairs(entry->file[f].precomp[bside], idx);
-  }
 
-  return res - 2;
+    return res - 2;
 }
 
-static int probe_dtm_table(Pos *pos, int won, int *success)
-{
-  struct TBEntry *ptr;
-  struct TBHashEntry *ptr2;
-  size_t idx;
-  int i;
-  int res;
-  int p[TBPIECES];
+static int probe_dtm_table(Board* board, int won, int* success){
+    
+    int i, res, p[TBPIECES];
+    
+    size_t idx;
+    struct TBEntry *ptr;
+    struct TBHashEntry *ptr2;
+    
+    uint64_t key = board->mhash;
 
-  // Obtain the position's material signature key.
-  Key key = pos_material_key();
+    // Test for KvK
+    if (key == 2ULL) return 0;
 
-  // Test for KvK.
-  if (key == 2ULL)
-    return 0;
-
-  ptr2 = TB_hash[key >> (64 - TBHASHBITS)];
-  for (i = 0; i < HSHMAX; i++)
-    if (ptr2[i].key == key) break;
-  if (i == HSHMAX) {
-    *success = 0;
-    return 0;
-  }
-
-  ptr = ptr2[i].dtm_ptr;
-  if (!ptr) {
-    *success = 0;
-    return 0;
-  }
-
-  // With the help of C11 atomics, we implement double-checked locking
-  // correctly.
-  if (!atomic_load_explicit(&ptr->ready, memory_order_acquire)) {
-    LOCK(TB_mutex);
-    if (!atomic_load_explicit(&ptr->ready, memory_order_relaxed)) {
-      char str[16];
-      prt_str(pos, str, ptr->key != key);
-      if (!init_table(ptr, str, 1)) {
-        ptr->data = NULL;
-        ptr2[i].dtm_ptr = NULL;
+    ptr2 = TB_hash[key >> (64 - TBHASHBITS)];
+    for (i = 0; i < HSHMAX; i++)
+        if (ptr2[i].key == key) break;
+    if (i == HSHMAX) {
         *success = 0;
-        UNLOCK(TB_mutex);
         return 0;
-      }
-      atomic_store_explicit(&ptr->ready, 1, memory_order_release);
     }
-    UNLOCK(TB_mutex);
-  }
 
-  int bside, mirror, cmirror;
-  if (!ptr->symmetric) {
-    if (key != ptr->key) {
-      cmirror = 8;
-      mirror = 0x38;
-      bside = (pos_stm() == WHITE);
-    } else {
-      cmirror = mirror = 0;
-      bside = !(pos_stm() == WHITE);
+    ptr = ptr2[i].dtm_ptr;
+    if (!ptr) {
+        *success = 0;
+        return 0;
     }
-  } else {
-    cmirror = pos_stm() == WHITE ? 0 : 8;
-    mirror = pos_stm() == WHITE ? 0 : 0x38;
-    bside = 0;
-  }
 
-  // p[i] is to contain the square 0-63 (A1-H8) for a piece of type
-  // pc[i] ^ cmirror, where 1 = white pawn, ..., 14 = black king.
-  // Pieces of the same type are guaranteed to be consecutive.
-  if (!ptr->has_pawns) {
-    struct DTMEntry_piece *entry = (struct DTMEntry_piece *)ptr;
-    uint8_t *pc = entry->pieces[bside];
-    for (i = 0; i < entry->num;) {
-      Bitboard bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
-      do {
-        p[i++] = pop_lsb(&bb);
-      } while (bb);
+    // With the help of C11 atomics, we implement double-checked locking correctly
+    if (!atomic_load_explicit(&ptr->ready, memory_order_acquire)) {
+        
+        LOCK(TB_mutex);
+        
+        if (!atomic_load_explicit(&ptr->ready, memory_order_relaxed)) {
+            
+            char str[16];
+            prt_str(pos, str, ptr->key != key);
+            
+            if (!init_table(ptr, str, 1)) {
+                ptr->data = NULL;
+                ptr2[i].dtm_ptr = NULL;
+                *success = 0;
+                UNLOCK(TB_mutex);
+                return 0;
+            }
+            
+            atomic_store_explicit(&ptr->ready, 1, memory_order_release);
+        }
+        
+        UNLOCK(TB_mutex);
     }
-    idx = encode_piece((struct TBEntry_piece *)entry, entry->norm[bside], p, entry->factor[bside]);
-    uint8_t *w = decompress_pairs(entry->precomp[bside], idx);
-    res = ((w[1] & 0x0f) << 8) | w[0];
-    if (!entry->loss_only)
-      res = entry->map[entry->map_idx[bside][won] + res];
-  } else {
-    struct DTMEntry_pawn *entry = (struct DTMEntry_pawn *)ptr;
-    int k = entry->rank[0].pieces[0][0] ^ cmirror;
-    Bitboard bb = pieces_cp(k >> 3, k & 0x07);
-    i = 0;
-    do {
-      p[i++] = pop_lsb(&bb) ^ mirror;
-    } while (bb);
-    int r = pawn_rank((struct TBEntry_pawn2 *)entry, p);
-    uint8_t *pc = entry->rank[r].pieces[bside];
-    for (; i < entry->num;) {
-      bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
-      do {
-        assume(i < TBPIECES); // Suppress a bogus warning.
-        p[i++] = pop_lsb(&bb) ^ mirror;
-      } while (bb);
-    }
-    idx = encode_pawn2((struct TBEntry_pawn2 *)entry, entry->rank[r].norm[bside], p, entry->rank[r].factor[bside]);
-    uint8_t *w = decompress_pairs(entry->rank[r].precomp[bside], idx);
-    res = ((w[1] & 0x0f) << 8) | w[0];
-    if (!entry->loss_only)
-      res = entry->map[entry->map_idx[r][bside][won] + res];
-  }
 
-  return res;
+    int bside, mirror, cmirror;
+    if (!ptr->symmetric) {
+        if (key != ptr->key) {
+            cmirror = 8;
+            mirror = 0x38;
+            bside = (board->turn == WHITE);
+        } else {
+            cmirror = mirror = 0;
+            bside = !(board->turn == WHITE);
+        }
+    } 
+    else {
+        cmirror = board->turn == WHITE ? 0 : 8;
+        mirror = board->turn == WHITE ? 0 : 0x38;
+        bside = 0;
+    }
+
+    // p[i] is to contain the square 0-63 (A1-H8) for a piece of type
+    // pc[i] ^ cmirror, where 1 = white pawn, ..., 14 = black king.
+    // Pieces of the same type are guaranteed to be consecutive.
+    if (!ptr->has_pawns) {
+        
+        struct DTMEntry_piece *entry = (struct DTMEntry_piece *)ptr;
+        uint8_t *pc = entry->pieces[bside];
+        
+        for (i = 0; i < entry->num;) {
+            uint64_t bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
+            do { p[i++] = poplsb(&bb); } while (bb);
+        }
+        
+        idx = encode_piece((struct TBEntry_piece *)entry, entry->norm[bside], p, entry->factor[bside]);
+        uint8_t *w = decompress_pairs(entry->precomp[bside], idx);
+        res = ((w[1] & 0x0f) << 8) | w[0];
+        if (!entry->loss_only)
+            res = entry->map[entry->map_idx[bside][won] + res];
+    } 
+    
+    else {
+        
+        struct DTMEntry_pawn *entry = (struct DTMEntry_pawn *)ptr;
+        int k = entry->rank[0].pieces[0][0] ^ cmirror;
+        
+        uint64_t bb = pieces_cp(k >> 3, k & 0x07);
+        i = 0; do { p[i++] = pop_lsb(&bb) ^ mirror; } while (bb);
+        
+        int r = pawn_rank((struct TBEntry_pawn2 *)entry, p);
+        uint8_t *pc = entry->rank[r].pieces[bside];
+        
+        for (; i < entry->num;) {
+            bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
+            do { assume(i < TBPIECES); p[i++] = pop_lsb(&bb) ^ mirror; } while (bb);
+        }
+        
+        idx = encode_pawn2((struct TBEntry_pawn2 *)entry, entry->rank[r].norm[bside], p, entry->rank[r].factor[bside]);
+        uint8_t *w = decompress_pairs(entry->rank[r].precomp[bside], idx);
+        res = ((w[1] & 0x0f) << 8) | w[0];
+        if (!entry->loss_only)
+            res = entry->map[entry->map_idx[r][bside][won] + res];
+    }
+
+    return res;
 }
 
 // The value of wdl MUST correspond to the WDL value of the position without
