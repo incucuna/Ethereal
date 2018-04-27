@@ -56,12 +56,18 @@ pthread_mutex_t LOCK = PTHREAD_MUTEX_INITIALIZER;
 
 uint16_t getBestMove(Thread* threads, Board* board, Limits* limits, double start, double time, double mtg, double inc){
     
+    
+    unsigned wdl, dtz; uint16_t move;
+    if (   popcount(board->colours[WHITE] | board->colours[BLACK]) <= TB_LARGEST
+        && tablebasesProbeDTZ(board, &move, &wdl, &dtz))
+        return move;
+    
+    
     int i, nthreads = threads[0].nthreads;
     
     SearchInfo info; memset(&info, 0, sizeof(SearchInfo));
     
     pthread_t* pthreads = malloc(sizeof(pthread_t) * nthreads);
-    
     
     // Some initialization for time management
     info.starttime = start;
@@ -467,7 +473,6 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
                 }
             }
         }
-        
     }
     
     // Step 5. Initialize flags and values used by pruning and search methods
@@ -895,9 +900,62 @@ unsigned tablebasesProbeWDL(Board* board){
         board->pieces[PAWN  ],
         board->fiftyMoveRule,
         board->castleRights,
-        board->epSquare == -1 ? 0 : board->epSquare,
+        board->epSquare == -1 ? 0 : board->epSquare - 8 + (board->turn << 4),
         board->turn == WHITE ? 1 : 0
     );
+}
+
+unsigned tablebasesProbeDTZ(Board* board, uint16_t* move, unsigned* wdl, unsigned* dtz){
+    
+    unsigned result = tb_probe_root(
+        board->colours[WHITE],
+        board->colours[BLACK],
+        board->pieces[KING  ],
+        board->pieces[QUEEN ],
+        board->pieces[ROOK  ],
+        board->pieces[BISHOP],
+        board->pieces[KNIGHT],
+        board->pieces[PAWN  ],
+        board->fiftyMoveRule,
+        board->castleRights,
+        board->epSquare == -1 ? 0 : board->epSquare - 8 + (board->turn << 4),
+        board->turn == WHITE ? 1 : 0,
+        NULL
+    );
+    
+    // Probe failed, or was fruitless
+    if (    result == TB_RESULT_CHECKMATE
+        ||  result == TB_RESULT_STALEMATE
+        ||  result == TB_RESULT_FAILED)
+        return 0u;
+        
+    // Extract Fathom's score representations
+    *wdl = TB_GET_WDL(result);
+    *dtz = TB_GET_DTZ(result);
+    
+    // Extract Fathom's move representation
+    unsigned to    = TB_GET_TO(result);
+    unsigned from  = TB_GET_FROM(result);
+    unsigned ep    = TB_GET_EP(result);
+    unsigned promo = TB_GET_PROMOTES(result);
+    
+    // Normal Moves
+    if (ep == 0u && promo == 0u)
+        *move = MoveMake(from, to, NORMAL_MOVE);
+    
+    // Enpass Moves. Fathom returns a to square, but in Ethereal board->epSquare
+    // is not the square of the captured pawn, but the square that the capturing
+    // pawn will be moving to. Thus, we ignore Fathom's to value to be safe
+    else if (ep != 0u)
+        *move = MoveMake(from, board->epSquare, ENPASS_MOVE);
+    
+    // Promotion Moves. Fathom has the inverted order of our promotion
+    // flags. Thus, four minus the flag converts to our representation.
+    // Also, we shift by 14 to actually match the flags we use in Ethereal
+    else if (promo != 0u)
+        *move = MoveMake(from, to, PROMOTION_MOVE | ((4 - promo) << 14));
+        
+    return 1u;
 }
 
 int moveIsTactical(Board* board, uint16_t move){

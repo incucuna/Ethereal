@@ -57,6 +57,8 @@ int qsearch(Thread* thread, PVariation* pv, int alpha, int beta, int height);
 
 unsigned tablebasesProbeWDL(Board* board);
 
+unsigned tablebasesProbeDTZ(Board* board, uint16_t* move, unsigned* wdl, unsigned* dtz);
+
 int moveIsTactical(Board* board, uint16_t move);
 
 int hasNonPawnMaterial(Board* board, int turn);
