@@ -7,17 +7,21 @@
   this code to other chess engines.
 */
 
+#include <assert.h>
+
+#include "bitutils.h"
+#include "piece.h"
+#include "board.h"
+#include "move.h"
+#include "movegen.h"
+#include "zorbist.h"
+#include "types.h"
+
+
 #include "tbprobe.h"
 #include "tbcore.h"
 
 #include "tbcore.c"
-
-#include "../piece.h"
-#include "../board.h"
-#include "../move.h"
-#include "../movegen.h"
-#include "../zorbist.h"
-#include "../types.h"
 
 extern uint64_t MaterialKeys[32];
 
@@ -29,29 +33,29 @@ static void prt_str(Board* board, char* str, int mirror){
     int i, piece, colour = !mirror ? WHITE : BLACK;
     
     for (piece = KING; piece >= PAWN; piece--)
-        for (i = popcount(boardPiecesOfColour(board, colour, pieces)), i > 0; i--)
+        for (i = popcount(piecesOfColour(board, colour, piece)); i > 0; i--)
             *str++ = pchr[KING - piece];
         
     *str++ = 'v';
     
     for (piece = KING; piece >= PAWN; piece--)
-        for (i = popcount(boardPiecesOfColour(board, !colour, pieces)), i > 0; i--)
+        for (i = popcount(piecesOfColour(board, !colour, piece)); i > 0; i--)
             *str++ = pchr[KING - piece];
         
     *str++ = 0;
 }
 
-static uint64_t calc_key(const Board* board, int mirror){
+static uint64_t calc_key(Board* board, int mirror){
     
     uint64_t key = 0ull; int piece;
     
     for (piece = PAWN; piece <= KING; piece++)
         key += MaterialKeys[MakePiece(piece, mirror)]
-            *  popcount(boardPiecesOfColour(board, WHITE, piece));
+            *  popcount(piecesOfColour(board, WHITE, piece));
             
     for (piece = PAWN; piece <= KING; piece++)
         key += MaterialKeys[MakePiece(piece, !mirror)]
-            *  popcount(boardPiecesOfColour(board, BLACK, piece));
+            *  popcount(piecesOfColour(board, BLACK, piece));
             
     // Verify that the above is equivilant to the computeMaterialKey
     // function which is verified during move application. If we are not

@@ -19,7 +19,7 @@ CC = gcc
 CCDROID = arm-linux-gnueabi-gcc
 
 
-SRC = *.c syzygy/*.c
+SRC = *.c
 
 LIBS = -lpthread -lm
 
