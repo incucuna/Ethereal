@@ -19,6 +19,16 @@
 #endif
 #include "tbcore.h"
 
+#define TB_PAWN 1
+#define TB_KNIGHT 2
+#define TB_BISHOP 3
+#define TB_ROOK 4
+#define TB_QUEEN 5
+#define TB_KING 6
+
+#define TB_WPAWN (TB_PAWN    )
+#define TB_BPAWN (TB_PAWN | 8)
+
 #define TBMAX_PIECE 254
 #define TBMAX_PAWN 256
 #define HSHMAX 5
@@ -45,8 +55,8 @@ static struct TBHashEntry TB_hash[1 << TBHASHBITS][HSHMAX];
 static struct DTZTableEntry DTZ_table[DTZ_ENTRIES];
 
 static void init_indices(void);
-static Key calc_key_from_pcs(int *pcs, int mirror);
-static Key calc_key_from_pieces(uint8_t *pieces, int num, int mirror);
+static uint64_t calc_key_from_pcs(int *pcs, int mirror);
+static uint64_t calc_key_from_pieces(uint8_t *pieces, int num, int mirror);
 static void free_wdl_entry(struct TBEntry *entry);
 static void free_dtm_entry(struct TBEntry *entry);
 static void free_dtz_entry(struct TBEntry *entry);
@@ -131,7 +141,7 @@ static void unmap_file(void *data, map_t mapping)
 }
 #endif
 
-static void add_to_hash(struct TBEntry *ptr, struct TBEntry *dtm_ptr, Key key)
+static void add_to_hash(struct TBEntry *ptr, struct TBEntry *dtm_ptr, uint64_t key)
 {
   int i, hshidx;
 
@@ -156,7 +166,7 @@ static void init_tb(char *str)
   FD fd;
   struct TBEntry *entry, *dtm_entry;;
   int i, j, pcs[16];
-  Key key, key2;
+  uint64_t key, key2;
   int color;
   char *s;
 
@@ -177,22 +187,22 @@ static void init_tb(char *str)
   for (s = str; *s; s++)
     switch (*s) {
     case 'P':
-      pcs[PAWN | color]++;
+      pcs[TB_BPAWN | color]++;
       break;
     case 'N':
-      pcs[KNIGHT | color]++;
+      pcs[TB_KNIGHT | color]++;
       break;
     case 'B':
-      pcs[BISHOP | color]++;
+      pcs[TB_BISHOP | color]++;
       break;
     case 'R':
-      pcs[ROOK | color]++;
+      pcs[TB_ROOK | color]++;
       break;
     case 'Q':
-      pcs[QUEEN | color]++;
+      pcs[TB_QUEEN | color]++;
       break;
     case 'K':
-      pcs[KING | color]++;
+      pcs[TB_KING | color]++;
       break;
     case 'v':
       color = 0x08;
@@ -200,7 +210,7 @@ static void init_tb(char *str)
     }
   key = calc_key_from_pcs(pcs, 0);
   key2 = calc_key_from_pcs(pcs, 1);
-  if (pcs[W_PAWN] + pcs[B_PAWN] == 0) {
+  if (pcs[TB_WPAWN] + pcs[TB_BPAWN] == 0) {
     if (TBnum_piece == TBMAX_PIECE) {
       fprintf(stderr, "TBMAX_PIECE limit too low!\n");
       exit(EXIT_FAILURE);
@@ -222,7 +232,7 @@ static void init_tb(char *str)
     entry->num += (uint8_t)pcs[i];
   dtm_entry->num = entry->num;
   dtm_entry->symmetric = entry->symmetric = (key == key2);
-  dtm_entry->has_pawns = entry->has_pawns = (pcs[W_PAWN] + pcs[B_PAWN] > 0);
+  dtm_entry->has_pawns = entry->has_pawns = (pcs[TB_WPAWN] + pcs[TB_BPAWN] > 0);
   if (entry->num > TB_MaxCardinality)
     TB_MaxCardinality = entry->num;
   if (dtm_present && entry->num > TB_MaxCardinalityDTM)
@@ -230,12 +240,12 @@ static void init_tb(char *str)
 
   if (entry->has_pawns) {
     struct TBEntry_pawn *ptr = (struct TBEntry_pawn *)entry;
-    ptr->pawns[0] = (uint8_t)pcs[W_PAWN];
-    ptr->pawns[1] = (uint8_t)pcs[B_PAWN];
-    if (pcs[B_PAWN] > 0
-              && (pcs[W_PAWN] == 0 || pcs[B_PAWN] < pcs[W_PAWN])) {
-      ptr->pawns[0] = (uint8_t)pcs[B_PAWN];
-      ptr->pawns[1] = (uint8_t)pcs[W_PAWN];
+    ptr->pawns[0] = (uint8_t)pcs[TB_WPAWN];
+    ptr->pawns[1] = (uint8_t)pcs[TB_BPAWN];
+    if (pcs[TB_BPAWN] > 0
+              && (pcs[TB_WPAWN] == 0 || pcs[TB_BPAWN] < pcs[TB_WPAWN])) {
+      ptr->pawns[0] = (uint8_t)pcs[TB_BPAWN];
+      ptr->pawns[1] = (uint8_t)pcs[TB_WPAWN];
     }
     struct DTMEntry_pawn *ptr2 = (struct DTMEntry_pawn *)dtm_entry;
     ptr2->pawns[0] = ptr->pawns[0];

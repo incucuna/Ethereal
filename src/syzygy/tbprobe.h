@@ -1,7 +1,9 @@
 #ifndef TBPROBE_H
 #define TBPROBE_H
 
-#include "movegen.h"
+#include "../movegen.h"
+#include "../types.h"
+#include "../piece.h"
 
 extern int TB_MaxCardinality;
 extern int TB_MaxCardinalityDTM;

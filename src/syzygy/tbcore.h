@@ -78,7 +78,7 @@ struct PairsData {
 
 struct TBEntry {
   uint8_t *data;
-  Key key;
+  uint64_t key;
   map_t mapping;
   atomic_uchar ready;
   uint8_t num;
@@ -93,7 +93,7 @@ __attribute__((__may_alias__))
 
 struct TBEntry_piece {
   uint8_t *data;
-  Key key;
+  uint64_t key;
   map_t mapping;
   atomic_uchar ready;
   uint8_t num;
@@ -109,7 +109,7 @@ struct TBEntry_piece {
 
 struct TBEntry_pawn {
   uint8_t *data;
-  Key key;
+  uint64_t key;
   map_t mapping;
   atomic_uchar ready;
   uint8_t num;
@@ -127,7 +127,7 @@ struct TBEntry_pawn {
 
 struct TBEntry_pawn2 {
   uint8_t *data;
-  Key key;
+  uint64_t key;
   map_t mapping;
   atomic_uchar ready;
   uint8_t num;
@@ -145,7 +145,7 @@ struct TBEntry_pawn2 {
 
 struct DTZEntry_piece {
   uint8_t *data;
-  Key key;
+  uint64_t key;
   map_t mapping;
   atomic_uchar ready;
   uint8_t num;
@@ -164,7 +164,7 @@ struct DTZEntry_piece {
 
 struct DTZEntry_pawn {
   uint8_t *data;
-  Key key;
+  uint64_t key;
   map_t mapping;
   atomic_uchar ready;
   uint8_t num;
@@ -185,7 +185,7 @@ struct DTZEntry_pawn {
 
 struct DTMEntry_piece {
   uint8_t *data;
-  Key key;
+  uint64_t key;
   map_t mapping;
   atomic_uchar ready;
   uint8_t num;
@@ -203,7 +203,7 @@ struct DTMEntry_piece {
 
 struct DTMEntry_pawn {
   uint8_t *data;
-  Key key;
+  uint64_t key;
   map_t mapping;
   atomic_uchar ready;
   uint8_t num;
@@ -222,14 +222,14 @@ struct DTMEntry_pawn {
 };
 
 struct TBHashEntry {
-  Key key;
+  uint64_t key;
   struct TBEntry *ptr;
   struct TBEntry *dtm_ptr;
 };
 
 struct DTZTableEntry {
-  Key key1;
-  Key key2;
+  uint64_t key1;
+  uint64_t key2;
   struct TBEntry *entry;
 };
 

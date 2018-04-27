@@ -502,7 +502,6 @@ static int probe_ab(Board* board, int alpha, int beta, int* success){
                 return v;
             alpha = v;
         }
-        
     }
     
     v = probe_wdl_table(pos, success);
@@ -510,79 +509,75 @@ static int probe_ab(Board* board, int alpha, int beta, int* success){
     return alpha >= v ? alpha : v;    
 }
 
-// Probe the WDL table for a particular position.
-//
-// If *success != 0, the probe was successful.
-//
-// If *success == 2, the position has a winning capture, or the position
-// is a cursed win and has a cursed winning capture, or the position
-// has an ep capture as only best move.
-// This is used in probe_dtz().
-//
-// The return value is from the point of view of the side to move:
-// -2 : loss
-// -1 : loss, but draw under 50-move rule
-//  0 : draw
-//  1 : win, but draw under 50-move rule
-//  2 : win
-int TB_probe_wdl(Pos *pos, int *success)
-{
-  *success = 1;
+int TB_probe_wdl(Board* board, int* success){
+    
+    *success = 1;
 
-  // Generate (at least) all legal en passant captures.
-  ExtMove *m = (pos->st-1)->endMoves;
-  ExtMove *end;
+    Undo undo[1];
+    int i, v, size = 0;
+    uint16_t move, moves[MAX_MOVES];
+    genAllNoisyMoves(board, moves, &size);
 
-  // Generate (at least) all legal captures including (under)promotions.
-  if (!pos_checkers()) {
-    end = generate_captures(pos, m);
-    end = add_underprom_caps(pos, m, end);
-  } else
-    end = generate_evasions(pos, m);
-  pos->st->endMoves = end;
+    int best_cap = -3, best_ep = -3;
 
-  int best_cap = -3, best_ep = -3;
+    // We do capture resolution, letting best_cap keep track of the best
+    // capture without ep rights and letting best_ep keep track of still
+    // better ep captures if they exist.
+    
+    for (i = 0; i < size; i++){
+        
+        move = moves[i];
+        
+        // Skip over non-captures (non-capture promotions)
+        if (   MoveType(move) != ENPASS_MOVE
+            && board->squares[MoveTo(move)] == EMPTY)
+            continue;
+        
+        // Apply the move, and verify legality
+        applyMove(board, move, undo);
+        if (!isNotInCheck(board, !board->turn)){
+            revertMove(board, move, undo);
+            continue;
+        }
+        
+        v = -probe_ab(pos, -2, -best_cap, success);
+        revertMove(board, move, undo);
+        if (*success == 0) return 0;
+        
+        if (v > best_cap) {
+            
+            if (v == 2) {
+                *success = 2;
+                return 2;
+            }
+            
+            if (type_of_m(move) != ENPASSANT)
+                best_cap = v;
+            
+            else if (v > best_ep)
+                best_ep = v;
+        }
+        
+    }
 
-  // We do capture resolution, letting best_cap keep track of the best
-  // capture without ep rights and letting best_ep keep track of still
-  // better ep captures if they exist.
-
-  for (; m < end; m++) {
-    Move move = m->move;
-    if (!is_capture(pos, move) || !is_legal(pos, move))
-      continue;
-    do_move(pos, move, gives_check(pos, pos->st, move));
-    int v = -probe_ab(pos, -2, -best_cap, success);
-    undo_move(pos, move);
+    v = probe_wdl_table(pos, success);
     if (*success == 0) return 0;
-    if (v > best_cap) {
-      if (v == 2) {
-        *success = 2;
-        return 2;
-      }
-      if (type_of_m(move) != ENPASSANT)
-        best_cap = v;
-      else if (v > best_ep)
-        best_ep = v;
+
+    // Now max(v, best_cap) is the WDL value of the position without ep rights.
+    // If the position without ep rights is not stalemate or no ep captures
+    // exist, then the value of the position is max(v, best_cap, best_ep).
+    // If the position without ep rights is stalemate and best_ep > -3,
+    // then the value of the position is best_ep (and we will have v == 0).
+
+    if (best_ep > best_cap) {
+        
+        if (best_ep > v) { // ep capture (possibly cursed losing) is best.
+            *success = 2;
+            return best_ep;
+        }
+        
+        best_cap = best_ep;
     }
-  }
-
-  int v = probe_wdl_table(pos, success);
-  if (*success == 0) return 0;
-
-  // Now max(v, best_cap) is the WDL value of the position without ep rights.
-  // If the position without ep rights is not stalemate or no ep captures
-  // exist, then the value of the position is max(v, best_cap, best_ep).
-  // If the position without ep rights is stalemate and best_ep > -3,
-  // then the value of the position is best_ep (and we will have v == 0).
-
-  if (best_ep > best_cap) {
-    if (best_ep > v) { // ep capture (possibly cursed losing) is best.
-      *success = 2;
-      return best_ep;
-    }
-    best_cap = best_ep;
-  }
 
   // Now max(v, best_cap) is the WDL value of the position unless
   // the position without ep rights is stalemate and best_ep > -3.
@@ -594,144 +589,145 @@ int TB_probe_wdl(Pos *pos, int *success)
     return best_cap;
   }
 
-  // Now handle the stalemate case.
-  if (best_ep > -3 && v == 0) {
-    // Check for stalemate in the position with ep captures.
-    for (m = (pos->st-1)->endMoves; m < end; m++) {
-      Move move = m->move;
-      if (type_of_m(move) == ENPASSANT) continue;
-      if (is_legal(pos, move)) break;
-    }
-    if (m == end && !pos_checkers()) {
-      end = generate_quiets(pos, end);
-      for (; m < end; m++) {
-        Move move = m->move;
-        if (is_legal(pos, move))
-          break;
-      }
-    }
-    if (m == end) { // Stalemate detected.
-      *success = 2;
-      return best_ep;
-    }
-  }
+    // Now handle the stalemate case.
+    if (best_ep > -3 && v == 0) {
 
-  // Stalemate / en passant not an issue, so v is the correct value.
+    
+        // Check for stalemate in the position with ep captures.
+        
+        for (i = 0; i < size; i++){
+            
+            move = Moves[i];
+            
+            if (MoveType(move) == ENPASS_MOVE) continue;
+            
+            applyMove(board, move, undo);
+            if (!isNotInCheck(board, !board->turn)){
+                revertMove(board, move, undo);
+                continue;
+            }
+            
+            revertMove(board, move, undo);
+            break;
+            
+        }
+        
+        if (i == size && !board->kingAttackers){
+            
+            size = 0;
+            generateAllQuietMoves(board, moves, &size);
+            
+            for (i = 0; i < size; i++){
+                
+                applyMove(board, move, undo);
+                if (!isNotInCheck(board, !board->turn)){
+                    revertMove(board, move, undo);
+                    continue;
+                }
+                
+                revertMove(board, move, undo);
+                break;
+            }
+        }
+        
+        if (i == size) { // Stalemate detected.
+            *success = 2;
+            return best_ep;
+        }
+    }
 
-  return v;
+    // Stalemate / en passant not an issue, so v is the correct value.
+
+    return v;
 }
 
-#if 0
-// This will not be called for positions with en passant captures
-static Value probe_dtm_dc(Pos *pos, int won, int *success)
-{
-  assert(ep_square() == 0);
+static int probe_dtm_win(Board* board, int* success);
 
-  Value v, best_cap = -VALUE_INFINITE;
+static int probe_dtm_loss(Board* board, int* success){
+    
+    int v, best = -MATE, num_ep = 0;
 
-  ExtMove *end, *m = (pos->st-1)->endMoves;
+    Undo undo[1];
+    int size = 0;
+    uint16_t move, moves[MAX_MOVES];
+    genAllNoisyMoves(board, moves, &size);
 
-  // Generate at least all legal captures including (under)promotions
-  if (!pos_checkers()) {
-    end = generate_captures(pos, m);
-    end = add_underprom_caps(pos, m, end);
-  } else
-    end = generate_evasions(pos, m);
-  pos->st->endMoves = end;
+    for (i = 0; i < size; i++){
 
-  for (; m < end; m++) {
-    Move move = m->move;
-    if (!is_capture(pos, move) || !is_legal(pos, move))
-      continue;
-    do_move(pos, move, gives_check(pos, pos->st, move));
-    if (!won)
-      v = -probe_dtm_dc(pos, 1, success) + 1;
-    else if (probe_ab(pos, -1, 0, success) < 0 && *success)
-      v = -probe_dtm_dc(pos, 0, success) - 1;
-    else
-      v = -VALUE_INFINITE;
-    undo_move(pos, move);
-    best_cap = max(best_cap, v);
-    if (*success == 0) return 0;
-  }
+        move = Moves[i];
 
-  int dtm = probe_dtm_table(pos, won, success);
-  v = won ? VALUE_MATE - 2 * dtm + 1 : -VALUE_MATE + 2 * dtm;
+        // Skip over non-captures (non-capture promotions)
+        if (board->squares[MoveTo(move)] == EMPTY)
+            continue;
 
-  return max(best_cap, v);
+        // Apply the move, and verify legality
+        applyMove(board, move, undo);
+        if (!isNotInCheck(board, !board->turn)){
+            revertMove(board, move, undo);
+            continue;
+        }
+
+        if (MoveType(move) == ENPASS_MOVE)
+            num_ep++;
+
+        v = -probe_dtm_win(pos, success) + 1;
+        revertMove(board, move, undo);
+        best = max(best, v);
+        if (*success == 0)
+            return 0;
+    }
+    
+    if (num_ep != 0){
+        
+        size = 0;
+        generateAllLegalMoves(board, moves, &size);
+        
+        if (size == num_ep)
+            return best;
+        
+    }
+    
+    v = -MATE + 2 * probe_dtm_table(pos, 0, success);
+    return max(best, v);
 }
-#endif
 
-static Value probe_dtm_win(Pos *pos, int *success);
-
-// Probe a position known to lose by probing the DTM table and looking
-// at captures.
-static Value probe_dtm_loss(Pos *pos, int *success)
-{
-  Value v, best = -VALUE_INFINITE, num_ep = 0;
-
-  ExtMove *end, *m = (pos->st-1)->endMoves;
-
-  // Generate at least all legal captures including (under)promotions
-  end = pos_checkers() ? generate_evasions(pos, m)
-                       : add_underprom_caps(pos, m, generate_captures(pos, m));
-  pos->st->endMoves = end;
-
-  for (; m < end; m++) {
-    Move move = m->move;
-    if (!is_capture(pos, move) || !is_legal(pos, move))
-      continue;
-    if (type_of_m(move) == ENPASSANT)
-      num_ep++;
-    do_move(pos, move, gives_check(pos, pos->st, move));
-    v = -probe_dtm_win(pos, success) + 1;
-    undo_move(pos, move);
-    best = max(best, v);
-    if (*success == 0)
-      return 0;
-  }
-
-  // If there are en passant captures, the position without ep rights
-  // may be a stalemate. If it is, we must avoid probing the DTM table.
-  if (num_ep != 0 && generate_legal(pos, m) == m + num_ep)
+static int probe_dtm_win(Board* board, int* success){
+    
+    int v, best = -MATE;
+    
+    Undo undo[1];
+    int size = 0;
+    uint16_t move, moves[MAX_MOVES];
+    genAllMoves(board, moves, &size);
+    
+    for (i = 0; i < size; i++){
+        
+        move = Moves[i];
+        
+        // Apply the move, and verify legality
+        applyMove(board, move, undo);
+        if (!isNotInCheck(board, !board->turn)){
+            revertMove(board, move, undo);
+            continue;
+        }
+        
+        if (   (board->epSquare != -1 ? TB_probe_wdl(pos, success)
+                                      : probe_ab(pos, -1, 0, success)) < 0
+            && *success)
+            v = -probe_dtm_loss(pos, success) - 1;
+        else
+            v = -VALUE_INFINITE;
+        
+        revertMove(board, move, undo);
+        best = max(best, v);
+        if (*success == 0) return 0;
+    }
+    
     return best;
-
-  v = -VALUE_MATE + 2 * probe_dtm_table(pos, 0, success);
-  return max(best, v);
 }
 
-static Value probe_dtm_win(Pos *pos, int *success)
-{
-  Value v, best = -VALUE_INFINITE;
-
-  // Generate all moves
-  ExtMove *end, *m = (pos->st-1)->endMoves;
-  end = pos_checkers() ? generate_evasions(pos, m)
-                       : generate_non_evasions(pos, m);
-  pos->st->endMoves = end;
-
-  // Perform a 1-ply search
-  for (; m < end; m++) {
-    Move move = m->move;
-    if (!is_legal(pos, move))
-      continue;
-    do_move(pos, move, gives_check(pos, pos->st, move));
-    if (   (ep_square() ? TB_probe_wdl(pos, success)
-                        : probe_ab(pos, -1, 0, success)) < 0
-        && *success)
-      v = -probe_dtm_loss(pos, success) - 1;
-    else
-      v = -VALUE_INFINITE;
-    undo_move(pos, move);
-    best = max(best, v);
-    if (*success == 0) return 0;
-  }
-
-  return best;
-}
-
-Value TB_probe_dtm(Pos *pos, int wdl, int *success)
-{
+int TB_probe_dtm(Board* board, int wdl, int *success){
+    
   assert(wdl != 0);
 
   *success = 1;
@@ -739,68 +735,6 @@ Value TB_probe_dtm(Pos *pos, int wdl, int *success)
   return wdl > 0 ? probe_dtm_win(pos, success)
                  : probe_dtm_loss(pos, success);
 }
-
-#if 0
-// To be called only for non-drawn positions.
-Value TB_probe_dtm2(Pos *pos, int wdl, int *success)
-{
-  assert(wdl != 0);
-
-  *success = 1;
-  Value v, best_cap = -VALUE_INFINITE, best_ep = -VALUE_INFINITE;
-
-  ExtMove *end, *m = (pos->st-1)->endMoves;
-
-  // Generate at least all legal captures including (under)promotions
-  if (!pos_checkers()) {
-    end = generate_captures(pos, m);
-    end = add_underprom_caps(pos, m, end);
-  } else
-    end = generate_evasions(pos, m);
-  pos->st->endMoves = end;
-
-  // Resolve captures, letting best_cap keep track of the best non-ep
-  // capture and letting best_ep keep track of the best ep capture.
-  for (; m < end; m++) {
-    Move move = m->move;
-    if (!is_capture(pos, move) || !is_legal(pos, move))
-      continue;
-    do_move(pos, move, gives_check(pos, pos->st, move));
-    if (wdl < 0)
-      v = -probe_dtm_dc(pos, 1, success) + 1;
-    else if (probe_ab(pos, -1, 0, success) < 0 && *success)
-      v = -probe_dtm_dc(pos, 0, success) - 1;
-    else
-      v = -VALUE_MATE;
-    undo_move(pos, move);
-    if (type_of_m(move) == ENPASSANT)
-      best_ep = max(best_ep, v);
-    else
-      best_cap = max(best_cap, v);
-    if (*success == 0)
-      return 0;
-  }
-
-  // If there are en passant captures, we have to determine the WDL value
-  // for the position without ep rights if it might be different.
-  if (best_ep > -VALUE_INFINITE && (best_ep < 0 || best_cap < 0)) {
-    assert(ep_square() != 0);
-    uint8_t s = pos->st->epSquare;
-    pos->st->epSquare = 0;
-    wdl = probe_ab(pos, -2, 2, success);
-    pos->st->epSquare = s;
-    if (*success == 0)
-      return 0;
-    if (wdl == 0)
-      return best_ep;
-  }
-
-  best_cap = max(best_cap, best_ep);
-  int dtm = probe_dtm_table(pos, wdl > 0, success);
-  v = wdl > 0 ? VALUE_MATE - 2 * dtm + 1 : -VALUE_MATE + 2 * dtm;
-  return max(best_cap, v);
-}
-#endif
 
 static int wdl_to_dtz[] = {
   -1, -101, 0, 101, 1
@@ -1028,96 +962,3 @@ int TB_root_probe_wdl(Pos *pos, RootMoves *rm)
 
   return 1;
 }
-
-// Use the DTM tables to find mate scores.
-// Either DTZ or WDL must have been probed successfully earlier.
-// A return value of 0 means that not all probes were successful.
-int TB_root_probe_dtm(Pos *pos, RootMoves *rm)
-{
-  int success;
-  Value tmpScore[rm->size];
-
-  // Probe each move.
-  pos->st->endMoves = (pos->st-1)->endMoves;
-  for (int i = 0; i < rm->size; i++) {
-    RootMove *m = &rm->move[i];
-
-    // Use TBScore to find out if the position is won or lost.
-    int wdl =  m->TBScore >  PawnValueEg ?  2
-             : m->TBScore < -PawnValueEg ? -2 : 0;
-
-    if (wdl == 0)
-      tmpScore[i] = 0;
-    else {
-      // Probe and adjust mate score by 1 ply.
-      do_move(pos, m->pv[0], gives_check(pos, pos->st, m->pv[0]));
-      Value v = -TB_probe_dtm(pos, -wdl, &success);
-      tmpScore[i] = wdl > 0 ? v - 1 : v + 1;
-      undo_move(pos, m->pv[0]);
-      if (success == 0)
-        return 0;
-    }
-  }
-
-  // All probes were successful. Now adjust TB scores and ranks.
-  for (int i = 0; i < rm->size; i++) {
-    RootMove *m = &rm->move[i];
-
-    m->TBScore = tmpScore[i];
-
-    // Let rank correspond to mate score, except for critical moves
-    // ranked 900, which we rank below all other mates for safety.
-    // By ranking mates above 1000 or below -1000, we let the search
-    // know it need not search those moves.
-    m->TBRank = m->TBRank == 900 ? 1001 : m->TBScore;
-  }
-
-  return 1;
-}
-
-// Use the DTM tables to complete a PV with mate score.
-void TB_expand_mate(Pos *pos, RootMove *move)
-{
-  int success = 1, chk = 0;
-  Value v = move->score, w = 0;
-  int wdl = v > 0 ? 2 : -2;
-  ExtMove *m;
-
-  if (move->pv_size == MAX_PLY)
-    return;
-
-  // First get to the end of the incomplete PV.
-  for (int i = 0; i < move->pv_size; i++) {
-    v = v > 0 ? -v - 1 : -v + 1;
-    wdl = -wdl;
-    pos->st->endMoves = (pos->st-1)->endMoves;
-    do_move(pos, move->pv[i], gives_check(pos, pos->st, move->pv[i]));
-  }
-
-  // Now try to expand until the actual mate.
-  if (popcount(pieces()) <= TB_CardinalityDTM)
-    while (v != -VALUE_MATE && move->pv_size < MAX_PLY) {
-      v = v > 0 ? -v - 1 : -v + 1;
-      wdl = -wdl;
-      pos->st->endMoves = generate_legal(pos, (pos->st-1)->endMoves);
-      for (m = (pos->st-1)->endMoves; m < pos->st->endMoves; m++) {
-        do_move(pos, m->move, gives_check(pos, pos->st, m->move));
-        if (wdl < 0)
-          chk = TB_probe_wdl(pos, &success); // verify that m->move wins
-        w =  success && (wdl > 0 || chk < 0)
-           ? TB_probe_dtm(pos, wdl, &success)
-           : 0;
-        undo_move(pos, m->move);
-        if (!success || v == w) break;
-      }
-      if (!success || v != w)
-        break;
-      move->pv[move->pv_size++] = m->move;
-      do_move(pos, m->move, gives_check(pos, pos->st, m->move));
-    }
-
-  // Move back to the root position.
-  for (int i = move->pv_size - 1; i >= 0; i--)
-    undo_move(pos, move->pv[i]);
-}
-
