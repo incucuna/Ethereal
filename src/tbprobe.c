@@ -218,7 +218,7 @@ static int probe_wdl_table(Board* board, int* success){
         
         for (; i < entry->num;) {
             bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
-            do { assume(i < TBPIECES); p[i++] = poplsb(&bb) ^ mirror; } while (bb);
+            do { p[i++] = poplsb(&bb) ^ mirror; } while (bb);
         }
         
         idx = encode_pawn(entry, entry->file[f].norm[bside], p, entry->file[f].factor[bside]);
@@ -329,7 +329,7 @@ static int probe_dtm_table(Board* board, int won, int* success){
         
         for (; i < entry->num;) {
             bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
-            do { assume(i < TBPIECES); p[i++] = poplsb(&bb) ^ mirror; } while (bb);
+            do { p[i++] = poplsb(&bb) ^ mirror; } while (bb);
         }
         
         idx = encode_pawn2((struct TBEntry_pawn2 *)entry, entry->rank[r].norm[bside], p, entry->rank[r].factor[bside]);
@@ -458,7 +458,7 @@ static int probe_dtz_table(Board* board, int wdl, int* success){
       uint8_t *pc = entry->file[f].pieces;
       for (; i < entry->num;) {
           bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
-          do { assume(i < TBPIECES); p[i++] = poplsb(&bb) ^ mirror; } while (bb); 
+          do { p[i++] = poplsb(&bb) ^ mirror; } while (bb); 
       }
       
       idx = encode_pawn((struct TBEntry_pawn *)entry, entry->file[f].norm, p, entry->file[f].factor);

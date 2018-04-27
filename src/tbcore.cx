@@ -19,6 +19,47 @@
 #endif
 #include "tbcore.h"
 
+int is_little_endian(void)
+{
+  int num = 1;
+  return *(uint8_t *)&num == 1;
+}
+
+uint32_t from_le_u32(uint32_t v)
+{
+  return is_little_endian() ? v : __builtin_bswap32(v);
+}
+
+uint16_t from_le_u16(uint16_t v)
+{
+  return is_little_endian() ? v : __builtin_bswap16(v);
+}
+
+uint64_t from_be_u64(uint64_t v)
+{
+  return is_little_endian() ? __builtin_bswap64(v) : v;
+}
+
+uint32_t from_be_u32(uint32_t v)
+{
+  return is_little_endian() ? __builtin_bswap32(v) : v;
+}
+
+uint16_t from_be_u16(uint16_t v)
+{
+  return is_little_endian() ? __builtin_bswap16(v) : v;
+}
+
+uint32_t read_le_u32(void *p)
+{
+  return from_le_u32(*(uint32_t *)p);
+}
+
+uint16_t read_le_u16(void *p)
+{
+  return from_le_u16(*(uint16_t *)p);
+}
+
 #define TB_PAWN 1
 #define TB_KNIGHT 2
 #define TB_BISHOP 3

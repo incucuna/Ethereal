@@ -34,6 +34,7 @@
 #include "piece.h"
 #include "psqt.h"
 #include "search.h"
+#include "tbprobe.h"
 #include "thread.h"
 #include "transposition.h"
 #include "types.h"
@@ -43,9 +44,13 @@
 #include "movepicker.h"
 #include "uci.h"
 
-pthread_mutex_t LOCK = PTHREAD_MUTEX_INITIALIZER;
+int TB_Cardinality = 5;
+int TB_RootInTB = 0;
+int TB_ProbeDepth = 0;
 
 extern TransTable Table;
+
+pthread_mutex_t LOCK = PTHREAD_MUTEX_INITIALIZER;
 
 uint16_t getBestMove(Thread* threads, Board* board, Limits* limits, double start, double time, double mtg, double inc){
     
@@ -297,7 +302,7 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
     
     int i, repetitions, quiets = 0, played = 0, hist = 0;
     int R, newDepth, rAlpha, rBeta, ttValue, oldAlpha = alpha;
-    int eval, value = -MATE, best = -MATE, futilityMargin = -MATE;
+    int eval, value = -MATE, best = -MATE, maxValue, futilityMargin = -MATE;
     int inCheck, isQuiet, improving, checkExtended, extension, bestWasQuiet = 0;
     
     uint16_t move, ttMove = NONE_MOVE, bestMove = NONE_MOVE, quietsTried[MAX_MOVES];
@@ -420,6 +425,48 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
         // Search expects depth to be greater than or equal to 0
         depth = 0; 
     }
+    
+    
+    if (!RootNode && TB_Cardinality){
+        
+        int pieceCount = popcount(board->pieces[WHITE] | board->pieces[BLACK]);
+
+        if (    board->castleRights == 0
+            &&  board->fiftyMoveRule == 0
+            &&  pieceCount <= TB_Cardinality
+            && (pieceCount <  TB_Cardinality || depth >= TB_ProbeDepth)){
+                
+            int tbSuccess = 0;
+            int wdl = TB_probe_wdl(board, &tbSuccess);
+
+            if (tbSuccess){
+
+                value =  wdl < -1 ? -MATE + MAX_PLY + height + 1
+                       : wdl >  1 ?  MATE - MAX_PLY - height - 1
+                       : 2 * wdl;
+
+                int b =  wdl < -1 ? ALLNODE
+                       : wdl >  1 ? CUTNODE : PVNODE;
+
+                if (b == PVNODE || (b == CUTNODE ? value >= beta : value <= alpha)){
+                    
+                    storeTranspositionEntry(&Table, MIN(MAX_PLY - 1, depth + 6), b, 
+                                            valueToTT(value, height), NONE_MOVE, board->hash);
+                                            
+                    return value;
+                }
+
+                if (PvNode){
+                    if (b == CUTNODE)
+                        best = value, alpha = MAX(alpha, best);
+                    else
+                        maxValue = value;
+                }
+            }
+        }
+    }
+    
+    
     
     // Step 5. Initialize flags and values used by pruning and search methods
     
@@ -719,6 +766,9 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
         for (i = 0; i < quiets - 1; i++)
             updateHistory(thread->history, quietsTried[i], board->turn, -depth*depth);
     }
+    
+    // Cap score in PvNodes based on Syzygy
+    if (PvNode) best = MIN(best, maxValue);
     
     // Step 22. Store the results of the search in the transposition table.
     // We must determine a bound for the result based on alpha and beta, and

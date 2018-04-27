@@ -33,6 +33,7 @@
 #include "piece.h"
 #include "psqt.h"
 #include "search.h"
+#include "tbprobe.h"
 #include "texel.h"
 #include "thread.h"
 #include "time.h"
@@ -56,6 +57,7 @@ int main(){
     int nthreads =  1;
     int megabytes = 16;
     
+    
     // Initialize the core components of Ethereal
     initializeMagics();
     initializePSQT();
@@ -73,6 +75,8 @@ int main(){
     
     // Build our Thread Pool, with default size of 1-thread
     Thread* threads = createThreadPool(nthreads);
+    
+    TB_init("C:\\Users\\Andy\\Desktop\\Syzygy;");
     
     #ifdef TUNE
         runTexelTuning(threads);
