@@ -453,18 +453,18 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
                     || (bound == CUTNODE && value >= beta)
                     || (bound == ALLNODE && value <= alpha)){
                                             
-                    storeTranspositionEntry(&Table, MIN(MAX_PLY - 1, depth + 6), bound,
+                    storeTranspositionEntry(&Table, MAX_PLY - 1, bound, 
                                             valueToTT(best, height), NONE_MOVE, board->hash);
                             
                     return value;
                 }
                 
-                // if (PvNode){
-                //     if (bound == ALLNODE)
-                //         best = value, alpha = MAX(alpha, best);
-                //     else
-                //         maxValue = value;
-                // }
+                if (PvNode){
+                    if (bound == ALLNODE)
+                        best = value, alpha = MAX(alpha, best);
+                    else
+                        maxValue = value;
+                }
             }
         }
         
@@ -768,6 +768,8 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
         for (i = 0; i < quiets - 1; i++)
             updateHistory(thread->history, quietsTried[i], board->turn, -depth*depth);
     }
+    
+    if (PvNode) best = MIN(best, maxValue);
     
     // Step 22. Store the results of the search in the transposition table.
     // We must determine a bound for the result based on alpha and beta, and
