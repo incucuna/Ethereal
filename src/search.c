@@ -30,6 +30,7 @@
 #include "board.h"
 #include "castle.h"
 #include "evaluate.h"
+#include "fathom/tbprobe.h"
 #include "history.h"
 #include "piece.h"
 #include "psqt.h"
@@ -43,7 +44,11 @@
 #include "movepicker.h"
 #include "uci.h"
 
-unsigned TB_LARGEST;
+//unsigned TB_LARGEST;
+
+extern unsigned TB_LARGEST;
+
+unsigned TB_PROBE_DEPTH;
 
 extern TransTable Table;
 
@@ -299,8 +304,8 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
     
     int i, repetitions, quiets = 0, played = 0, hist = 0;
     int R, newDepth, rAlpha, rBeta, ttValue, oldAlpha = alpha;
-    int eval, value = -MATE, best = -MATE, futilityMargin = -MATE;
-    int inCheck, isQuiet, improving, checkExtended, extension, bestWasQuiet = 0;
+    int eval, value = -MATE, best = -MATE, maxValue = MATE, futilityMargin = -MATE;
+    int bound, inCheck, isQuiet, improving, checkExtended, extension, bestWasQuiet = 0;
     
     uint16_t move, ttMove = NONE_MOVE, bestMove = NONE_MOVE, quietsTried[MAX_MOVES];
     
@@ -421,6 +426,48 @@ int search(Thread* thread, PVariation* pv, int alpha, int beta, int depth, int h
 
         // Search expects depth to be greater than or equal to 0
         depth = 0; 
+    }
+    
+    // Probe the Tablebases
+    
+    if (!RootNode && TB_LARGEST){
+        
+        int piececount = popcount(board->colours[WHITE] | board->colours[BLACK]);
+        
+        if (    board->fiftyMoveRule == 0
+            &&  board->castleRights == 0
+            &&  piececount <= (int)TB_LARGEST
+            && (piececount <  (int)TB_LARGEST || depth >= (int)TB_PROBE_DEPTH)){
+                
+            unsigned result = tablebasesProbeWDL(board);
+                
+            if (result != TB_RESULT_FAILED){
+                
+                value = result == TB_LOSS ? -MATE + MAX_PLY + height + 1
+                      : result == TB_WIN  ?  MATE - MAX_PLY - height - 1 : 0;
+                      
+                bound = result == TB_LOSS ? ALLNODE
+                      : result == TB_WIN  ? CUTNODE : PVNODE;
+                      
+                if (    bound == PVNODE
+                    || (bound == CUTNODE && value >= beta)
+                    || (bound == ALLNODE && value <= alpha)){
+                                            
+                    storeTranspositionEntry(&Table, MIN(MAX_PLY - 1, depth + 6), bound,
+                                            valueToTT(best, height), NONE_MOVE, board->hash);
+                            
+                    return value;
+                }
+                
+                // if (PvNode){
+                //     if (bound == ALLNODE)
+                //         best = value, alpha = MAX(alpha, best);
+                //     else
+                //         maxValue = value;
+                // }
+            }
+        }
+        
     }
     
     // Step 5. Initialize flags and values used by pruning and search methods
@@ -831,6 +878,24 @@ int qsearch(Thread* thread, PVariation* pv, int alpha, int beta, int height){
     }
     
     return best;
+}
+
+unsigned tablebasesProbeWDL(Board* board){
+    
+    return tb_probe_wdl(
+        board->colours[WHITE],
+        board->colours[BLACK],
+        board->pieces[KING  ],
+        board->pieces[QUEEN ],
+        board->pieces[ROOK  ],
+        board->pieces[BISHOP],
+        board->pieces[KNIGHT],
+        board->pieces[PAWN  ],
+        board->fiftyMoveRule,
+        board->castleRights,
+        board->epSquare == -1 ? 0 : board->epSquare,
+        board->turn == WHITE ? 1 : 0
+    );
 }
 
 int moveIsTactical(Board* board, uint16_t move){

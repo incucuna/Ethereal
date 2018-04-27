@@ -75,6 +75,8 @@ int main(){
     // Build our Thread Pool, with default size of 1-thread
     Thread* threads = createThreadPool(nthreads);
     
+    tb_init("C:\\Users\\Andy\\Desktop\\Syzygy");
+    
     #ifdef TUNE
         runTexelTuning(threads);
         exit(0);
@@ -103,20 +105,20 @@ int main(){
         
         else if (stringStartsWith(str, "setoption")){
             
-            if (stringStartsWith(str, "setoption name Hash value")){
-                megabytes = atoi(str + strlen("setoption name Hash value"));
+            if (stringStartsWith(str, "setoption name Hash value ")){
+                megabytes = atoi(str + strlen("setoption name Hash value "));
                 destroyTranspositionTable(&Table);
                 initializeTranspositionTable(&Table, megabytes);
             }
             
-            if (stringStartsWith(str, "setoption name Threads value")){
+            if (stringStartsWith(str, "setoption name Threads value ")){
                 free(threads);
-                nthreads = atoi(str + strlen("setoption name Threads value"));
+                nthreads = atoi(str + strlen("setoption name Threads value "));
                 threads = createThreadPool(nthreads);
             }
             
-            if (stringStartsWith(str, "setoption name SyzygyPath value")){
-                tb_init(str + strlen("setoption name SyzygyPath value"));
+            if (stringStartsWith(str, "setoption name SyzygyPath value ")){
+                tb_init(str + strlen("setoption name SyzygyPath value "));
                 printf("setting");
                 fflush(stdout);
             }
