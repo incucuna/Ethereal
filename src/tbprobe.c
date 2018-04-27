@@ -21,7 +21,7 @@
 #include "tbprobe.h"
 #include "tbcore.h"
 
-#include "tbcore.c"
+#include "tbcore.cx"
 
 extern uint64_t MaterialKeys[32];
 
