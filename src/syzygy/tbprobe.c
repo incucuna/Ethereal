@@ -331,188 +331,183 @@ static int probe_dtm_table(Board* board, int won, int* success){
     return res;
 }
 
-// The value of wdl MUST correspond to the WDL value of the position without
-// en passant rights.
-static int probe_dtz_table(Pos *pos, int wdl, int *success)
-{
-  struct TBEntry *ptr;
-  size_t idx;
-  int i;
-  uint32_t res;
-  int p[TBPIECES];
+static int probe_dtz_table(Board* board, int wdl, int* success){
+  
+    int i, p[TBPIECES];
+    uint32_t res;
+  
+    size_t idx;  
+    struct TBEntry *ptr;
 
-  // Obtain the position's material signature key.
-  Key key = pos_material_key();
+    uint64_t key = board->mhash;
 
-  if (DTZ_table[0].key1 != key && DTZ_table[0].key2 != key) {
-    for (i = 1; i < DTZ_ENTRIES; i++)
-      if (DTZ_table[i].key1 == key || DTZ_table[i].key2 == key) break;
-    if (i < DTZ_ENTRIES) {
-      struct DTZTableEntry table_entry = DTZ_table[i];
-      for (; i > 0; i--)
-        DTZ_table[i] = DTZ_table[i - 1];
-      DTZ_table[0] = table_entry;
-    } else {
-      struct TBHashEntry *ptr2 = TB_hash[key >> (64 - TBHASHBITS)];
-      for (i = 0; i < HSHMAX; i++)
-        if (ptr2[i].key == key) break;
-      if (i == HSHMAX) {
+    if (DTZ_table[0].key1 != key && DTZ_table[0].key2 != key) {
+        
+        for (i = 1; i < DTZ_ENTRIES; i++)
+            if (DTZ_table[i].key1 == key || DTZ_table[i].key2 == key) break;
+    
+        if (i < DTZ_ENTRIES) {
+            struct DTZTableEntry table_entry = DTZ_table[i];
+            for (; i > 0; i--)
+                DTZ_table[i] = DTZ_table[i - 1];
+            DTZ_table[0] = table_entry;
+        }
+        
+        else {
+            
+            struct TBHashEntry *ptr2 = TB_hash[key >> (64 - TBHASHBITS)];
+            for (i = 0; i < HSHMAX; i++)
+                if (ptr2[i].key == key) break;
+            
+            if (i == HSHMAX) {
+                *success = 0;
+                return 0;
+            }
+            
+            ptr = ptr2[i].ptr;
+            char str[16];
+            int mirror = (ptr->key != key);
+            prt_str(board, str, mirror);
+            
+            if (DTZ_table[DTZ_ENTRIES - 1].entry)
+                free_dtz_entry(DTZ_table[DTZ_ENTRIES-1].entry);
+            
+            for (i = DTZ_ENTRIES - 1; i > 0; i--)
+                DTZ_table[i] = DTZ_table[i - 1];
+            
+            load_dtz_table(str, calc_key(board, mirror), calc_key(board, !mirror));
+        }
+    }
+
+    ptr = DTZ_table[0].entry;
+    if (!ptr) {
         *success = 0;
         return 0;
-      }
-      ptr = ptr2[i].ptr;
-      char str[16];
-      int mirror = (ptr->key != key);
-      prt_str(pos, str, mirror);
-      if (DTZ_table[DTZ_ENTRIES - 1].entry)
-        free_dtz_entry(DTZ_table[DTZ_ENTRIES-1].entry);
-      for (i = DTZ_ENTRIES - 1; i > 0; i--)
-        DTZ_table[i] = DTZ_table[i - 1];
-      load_dtz_table(str, calc_key(pos, mirror), calc_key(pos, !mirror));
     }
-  }
 
-  ptr = DTZ_table[0].entry;
-  if (!ptr) {
-    *success = 0;
-    return 0;
-  }
-
-  int bside, mirror, cmirror;
-  if (!ptr->symmetric) {
-    if (key != ptr->key) {
-      cmirror = 8;
-      mirror = 0x38;
-      bside = (pos_stm() == WHITE);
+    int bside, mirror, cmirror;
+    if (!ptr->symmetric) {
+        if (key != ptr->key) {
+            cmirror = 8;
+            mirror = 0x38;
+            bside = (board->turn == WHITE);
+        } else {
+            cmirror = mirror = 0;
+            bside = !(board->turn == WHITE);
+        }
     } else {
-      cmirror = mirror = 0;
-      bside = !(pos_stm() == WHITE);
-    }
-  } else {
-    cmirror = pos_stm() == WHITE ? 0 : 8;
-    mirror = pos_stm() == WHITE ? 0 : 0x38;
-    bside = 0;
-  }
-
-  if (!ptr->has_pawns) {
-    struct DTZEntry_piece *entry = (struct DTZEntry_piece *)ptr;
-    if ((entry->flags & 1) != bside && !entry->symmetric) {
-      *success = -1;
-      return 0;
-    }
-    uint8_t *pc = entry->pieces;
-    for (i = 0; i < entry->num;) {
-      Bitboard bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
-      do {
-        p[i++] = pop_lsb(&bb);
-      } while (bb);
-    }
-    idx = encode_piece((struct TBEntry_piece *)entry, entry->norm, p, entry->factor);
-    uint8_t *w = decompress_pairs(entry->precomp, idx);
-    res = ((w[1] & 0x0f) << 8) | w[0];
-
-    if (entry->flags & 2) {
-      if (!(entry->flags & 16))
-        res = entry->map[entry->map_idx[wdl_to_map[wdl + 2]] + res];
-      else
-        res = ((uint16_t *)entry->map)[entry->map_idx[wdl_to_map[wdl + 2]] + res];
+        cmirror = board->turn == WHITE ? 0 : 8;
+        mirror = board->turn == WHITE ? 0 : 0x38;
+        bside = 0;
     }
 
-    if (!(entry->flags & pa_flags[wdl + 2]) || (wdl & 1))
-      res *= 2;
-  } else {
-    struct DTZEntry_pawn *entry = (struct DTZEntry_pawn *)ptr;
-    int k = entry->file[0].pieces[0] ^ cmirror;
-    Bitboard bb = pieces_cp(k >> 3, k & 0x07);
-    i = 0;
-    do {
-      p[i++] = pop_lsb(&bb) ^ mirror;
-    } while (bb);
-    int f = pawn_file((struct TBEntry_pawn *)entry, p);
-    if ((entry->flags[f] & 1) != bside) {
-      *success = -1;
-      return 0;
-    }
-    uint8_t *pc = entry->file[f].pieces;
-    for (; i < entry->num;) {
-      bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
-      do {
-        assume(i < TBPIECES); // Suppress a bogus warning.
-        p[i++] = pop_lsb(&bb) ^ mirror;
-      } while (bb);
-    }
-    idx = encode_pawn((struct TBEntry_pawn *)entry, entry->file[f].norm, p, entry->file[f].factor);
-    uint8_t *w = decompress_pairs(entry->file[f].precomp, idx);
-    res = ((w[1] & 0x0f) << 8) | w[0];
+    if (!ptr->has_pawns) {
+        
+        struct DTZEntry_piece *entry = (struct DTZEntry_piece *)ptr;
+        if ((entry->flags & 1) != bside && !entry->symmetric) {
+            *success = -1;
+            return 0;
+        }
+        
+        uint8_t *pc = entry->pieces;
+        for (i = 0; i < entry->num;) {
+            uint64_t bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
+            do { p[i++] = poplsb(&bb); } while (bb);
+        }
+        
+        idx = encode_piece((struct TBEntry_piece *)entry, entry->norm, p, entry->factor);
+        uint8_t *w = decompress_pairs(entry->precomp, idx);
+        res = ((w[1] & 0x0f) << 8) | w[0];
 
-    if (entry->flags[f] & 2) {
-      if (!(entry->flags[f] & 16))
-        res = entry->map[entry->map_idx[f][wdl_to_map[wdl + 2]] + res];
-      else
-        res = ((uint16_t *)entry->map)[entry->map_idx[f][wdl_to_map[wdl + 2]] + res];
+        if (entry->flags & 2) {
+            if (!(entry->flags & 16))
+                res = entry->map[entry->map_idx[wdl_to_map[wdl + 2]] + res];
+            else
+                res = ((uint16_t *)entry->map)[entry->map_idx[wdl_to_map[wdl + 2]] + res];
+        }
+
+        if (!(entry->flags & pa_flags[wdl + 2]) || (wdl & 1))
+            res *= 2;
     }
-
-    if (!(entry->flags[f] & pa_flags[wdl + 2]) || (wdl & 1))
-      res *= 2;
-  }
-
-  return res;
+  
+    else {
+        
+      struct DTZEntry_pawn *entry = (struct DTZEntry_pawn *)ptr;
+      int k = entry->file[0].pieces[0] ^ cmirror;
+      
+      Bitboard bb = pieces_cp(k >> 3, k & 0x07);
+      i = 0; do { p[i++] = pop_lsb(&bb) ^ mirror; } while (bb);
+      
+      int f = pawn_file((struct TBEntry_pawn *)entry, p);
+      if ((entry->flags[f] & 1) != bside) {
+          *success = -1;
+          return 0;
+      }
+      
+      uint8_t *pc = entry->file[f].pieces;
+      for (; i < entry->num;) {
+          bb = pieces_cp((pc[i] ^ cmirror) >> 3, pc[i] & 0x07);
+          do { assume(i < TBPIECES); p[i++] = pop_lsb(&bb) ^ mirror; } while (bb); 
+      }
+      
+      idx = encode_pawn((struct TBEntry_pawn *)entry, entry->file[f].norm, p, entry->file[f].factor);
+      uint8_t *w = decompress_pairs(entry->file[f].precomp, idx);
+      res = ((w[1] & 0x0f) << 8) | w[0];
+    
+      if (entry->flags[f] & 2) {
+          if (!(entry->flags[f] & 16))
+              res = entry->map[entry->map_idx[f][wdl_to_map[wdl + 2]] + res];
+          else
+              res = ((uint16_t *)entry->map)[entry->map_idx[f][wdl_to_map[wdl + 2]] + res];
+      }
+    
+      if (!(entry->flags[f] & pa_flags[wdl + 2]) || (wdl & 1))
+          res *= 2;
+    }
+    
+    return res;
 }
 
-// Add underpromotion captures to list of captures.
-static ExtMove *add_underprom_caps(Pos *pos, ExtMove *m, ExtMove *end)
-{
-  ExtMove *extra = end;
+static int probe_ab(Board* board, int alpha, int beta, int* success){
+  
+    // No probe_ab when the position has an enpass move
+    assert(board->epSquare == -1);
+  
+    Undo undo[1];
+    int i, v, size = 0;
+    uint16_t move, moves[MAX_MOVES];
+    genAllNoisyMoves(board, moves, &size);
 
-  for (; m < end; m++) {
-    Move move = m->move;
-    if (type_of_m(move) == PROMOTION && piece_on(to_sq(move))) {
-      (*extra++).move = (Move)(move - (1 << 12));
-      (*extra++).move = (Move)(move - (2 << 12));
-      (*extra++).move = (Move)(move - (3 << 12));
+    for (i = 0; i < size; i++){
+        
+        move = moves[i];
+        
+        // Skip over non-captures (non-capture promotions)
+        if (board->squares[MoveTo(move)] == EMPTY)
+            continue;
+        
+        // Apply the move, and verify legality
+        applyMove(board, move, undo);
+        if (!isNotInCheck(board, !board->turn)){
+            revertMove(board, move, undo);
+            continue;
+        }
+        
+        v = -probe_ab(pos, -beta, -alpha, success);
+        revertMove(board, move, undo);
+        if (*success == 0) return 0;
+        
+        if (v > alpha) {
+            if (v >= beta)
+                return v;
+            alpha = v;
+        }
+        
     }
-  }
+    
+    v = probe_wdl_table(pos, success);
 
-  return extra;
-}
-
-// This will not be called for positions with en passant captures.
-static int probe_ab(Pos *pos, int alpha, int beta, int *success)
-{
-  assert(ep_square() == 0);
-
-  int v;
-  ExtMove *m = (pos->st-1)->endMoves;
-  ExtMove *end;
-
-  // Generate (at least) all legal captures including (under)promotions.
-  // It is OK to generate more, as long as they are filtered out below.
-  if (!pos_checkers()) {
-    end = generate_captures(pos, m);
-    // Since underpromotion captures are not included, we need to add them.
-    end = add_underprom_caps(pos, m, end);
-  } else
-    end = generate_evasions(pos, m);
-  pos->st->endMoves = end;
-
-  for (; m < end; m++) {
-    Move move = m->move;
-    if (!is_capture(pos, move) || !is_legal(pos, move))
-      continue;
-    do_move(pos, move, gives_check(pos, pos->st, move));
-    v = -probe_ab(pos, -beta, -alpha, success);
-    undo_move(pos, move);
-    if (*success == 0) return 0;
-    if (v > alpha) {
-      if (v >= beta)
-        return v;
-      alpha = v;
-    }
-  }
-
-  v = probe_wdl_table(pos, success);
-
-  return alpha >= v ? alpha : v;
+    return alpha >= v ? alpha : v;    
 }
 
 // Probe the WDL table for a particular position.
