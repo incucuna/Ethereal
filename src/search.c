@@ -46,7 +46,7 @@
 
 extern unsigned TB_LARGEST;
 
-unsigned TB_PROBE_DEPTH = 3;
+unsigned TB_PROBE_DEPTH;
 
 extern TransTable Table;
 
